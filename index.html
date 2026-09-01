@@ -3,79 +3,71 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - MVP</title>
+    <title>PeakFinder AR - MVP v2</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; }
         
-        /* Layout schermate */
-        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; z-index: 10; }
-        .hidden { display: none !important; }
-
-        /* Camera & Canvas AR */
         #camera-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         #ar-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
 
-        /* Componenti Calibrazione */
-        .calibration-box { background: rgba(0,0,0,0.85); padding: 20px; border-radius: 16px; text-align: center; margin: auto 0; }
-        .compass-dial { width: 200px; height: 200px; border: 4px solid #00E676; border-radius: 50%; margin: 20px auto; position: relative; display: flex; align-items: center; justify-content: center; }
-        .arrow { width: 6px; height: 90px; background: #00E676; position: absolute; transform-origin: bottom center; top: 10px; border-radius: 4px; }
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; z-index: 10; background: rgba(0,0,0,0.8); }
+        .hidden { display: none !important; }
+
+        .calibration-box { background: rgba(20,20,20,0.95); padding: 20px; border-radius: 16px; text-align: center; margin: auto 0; border: 1px solid #333; }
+        .compass-dial { width: 180px; height: 180px; border: 4px solid #00E676; border-radius: 50%; margin: 15px auto; position: relative; display: flex; align-items: center; justify-content: center; }
+        .arrow { width: 6px; height: 80px; background: #00E676; position: absolute; transform-origin: bottom center; top: 10px; border-radius: 4px; }
         .arrow::before { content: ''; position: absolute; top: -10px; left: -7px; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 15px solid #00E676; }
 
-        /* Controlli UI */
         .btn { min-height: 48px; min-width: 48px; background: #00E676; color: #000; border: none; padding: 12px 24px; font-weight: bold; font-size: 16px; border-radius: 24px; cursor: pointer; margin: 5px; }
         .btn:active { opacity: 0.8; }
         .btn-secondary { background: #333; color: #fff; }
-        .slider-container { margin: 15px 0; }
         input[type=range] { width: 100%; height: 48px; }
 
-        /* Overlay Info Stile MVP */
-        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; }
+        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.75); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; pointer-events: none; border: 1px solid #444; }
         .controls-bar { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; z-index: 5; gap: 10px; }
     </style>
 </head>
 <body>
 
-    <!-- Video Streaming & AR Overlay -->
     <video id="camera-feed" autoplay playsinline></video>
     <canvas id="ar-canvas"></canvas>
 
-    <!-- Status Bar -->
     <div id="status-bar" class="status-bar hidden">
-        GPS: <span id="gps-status">In attesa...</span> | Cime trovate: <span id="peaks-count">0</span>
+        GPS: <span id="gps-status">In attesa...</span> | Altitudine: <span id="user-alt">--</span>m | Cime visibili: <span id="peaks-count">0</span>
     </div>
 
-    <!-- FASE 1: Schermata Calibrazione Nord -->
+    <!-- Calibrazione Nord con compensazione Tilt/Roll -->
     <div id="calib-screen" class="screen">
-        <div style="text-align: center; margin-top: 20px;">
-            <h2>Calibrazione Nord Reale</h2>
-            <p style="font-size: 14px; color: #ccc; margin-top: 5px;">Ruota la freccia finché non punta verso la direzione del Nord che hai identificato.</p>
+        <div style="text-align: center; margin-top: 10px;">
+            <h2>Calibrazione Nord</h2>
+            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orientare la freccia verso il Nord geografico calcolato. L'inclinazione del telefono viene compensata automaticamente.</p>
         </div>
 
         <div class="calibration-box">
             <div class="compass-dial">
                 <div id="arrow" class="arrow" style="transform: rotate(0deg);"></div>
             </div>
-            <div class="slider-container">
+            <div style="margin: 10px 0;">
                 <input type="range" id="angle-slider" min="0" max="359" value="0">
             </div>
-            <p>Angolo Nord rispetto al telefono: <b id="angle-val">0°</b></p>
+            <p>Offset Nord: <b id="angle-val">0°</b></p>
+            <p style="font-size: 11px; color: #aaa; margin-top: 4px;">Inclinazione: Roll <span id="roll-val">0</span>° | Pitch <span id="pitch-val">0</span>°</p>
         </div>
 
-        <button class="btn" onclick="confirmCalibration()">Conferma Nord e Avvia Fotocamera</button>
+        <button class="btn" onclick="confirmCalibration()">Conferma e Avvia Fotocamera</button>
     </div>
 
-    <!-- Controlli In-App AR -->
     <div id="ar-controls" class="controls-bar hidden">
         <button class="btn btn-secondary" onclick="recalibrate()">Ricalibra Nord</button>
-        <button class="btn" id="freeze-btn" onclick="toggleFreeze()">Scatta / Blocca</button>
+        <button class="btn" id="freeze-btn" onclick="toggleFreeze()">Blocca Vista</button>
     </div>
 
     <script>
-        let userLat = null, userLon = null;
+        let userLat = null, userLon = null, userAlt = 0;
         let calibratedNorthOffset = 0;
-        let currentDeviceAlpha = 0, currentPitch = 0, currentRoll = 0;
-        let peaksData = [];
+        let deviceAlpha = 0, deviceBeta = 0, deviceGamma = 0;
+        let rawPeaks = [], visiblePeaks = [];
         let isFrozen = false;
         let videoStream = null;
 
@@ -83,14 +75,12 @@
         const arrow = document.getElementById('arrow');
         const angleVal = document.getElementById('angle-val');
 
-        // Aggiorna la freccia durante la calibrazione
         slider.addEventListener('input', (e) => {
             const val = e.target.value;
             arrow.style.transform = `rotate(${val}deg)`;
             angleVal.innerText = `${val}°`;
         });
 
-        // Avvio procedura GPS ed Orientamento
         window.addEventListener('DOMContentLoaded', () => {
             initGPS();
             initSensors();
@@ -98,17 +88,16 @@
 
         function initGPS() {
             if ("geolocation" in navigator) {
-                navigator.geolocation.getCurrentPosition(
+                navigator.geolocation.watchPosition(
                     pos => {
                         userLat = pos.coords.latitude;
                         userLon = pos.coords.longitude;
+                        userAlt = pos.coords.altitude || 0;
                         document.getElementById('gps-status').innerText = `${userLat.toFixed(4)}, ${userLon.toFixed(4)}`;
-                        fetchPeaks(userLat, userLon);
+                        document.getElementById('user-alt').innerText = Math.round(userAlt);
+                        if (rawPeaks.length === 0) fetchPeaks(userLat, userLon);
                     },
-                    err => {
-                        document.getElementById('gps-status').innerText = "Errore GPS";
-                        alert("Permesso GPS necessario per calcolare le cime.");
-                    },
+                    err => { document.getElementById('gps-status').innerText = "Errore GPS"; },
                     { enableHighAccuracy: true }
                 );
             }
@@ -117,19 +106,35 @@
         function initSensors() {
             window.addEventListener('deviceorientation', (e) => {
                 if (isFrozen) return;
-                // Alpha (bussola grezza/giroscopio), Beta (pitch), Gamma (roll)
-                currentDeviceAlpha = e.alpha || 0;
-                currentPitch = e.beta || 0;
-                currentRoll = e.gamma || 0;
+                deviceAlpha = e.alpha || 0;
+                deviceBeta = e.beta || 0;   // Pitch (-180 a 180)
+                deviceGamma = e.gamma || 0;  // Roll (-90 a 90)
+
+                document.getElementById('pitch-val').innerText = Math.round(deviceBeta);
+                document.getElementById('roll-val').innerText = Math.round(deviceGamma);
+
                 if (!document.getElementById('calib-screen').classList.contains('hidden')) return;
                 renderAR();
             });
         }
 
+        // Calcola l'Azimuth Compensato dall'inclinazione 3D (Vettore top telefono)
+        function getTiltCompensatedAzimuth() {
+            const alpha = deviceAlpha * Math.PI / 180;
+            const beta = deviceBeta * Math.PI / 180;
+            const gamma = deviceGamma * Math.PI / 180;
+
+            const vx = Math.sin(alpha) * Math.cos(gamma) + Math.cos(alpha) * Math.sin(beta) * Math.sin(gamma);
+            const vy = Math.cos(alpha) * Math.cos(gamma) - Math.sin(alpha) * Math.sin(beta) * Math.sin(gamma);
+
+            let azimuth = Math.atan2(vx, vy) * 180 / Math.PI;
+            return (azimuth + 360) % 360;
+        }
+
         function confirmCalibration() {
             const manualAngle = parseInt(slider.value);
-            // Salva il delta tra la lettura grezza del giroscopio e la posizione scelta dall'utente
-            calibratedNorthOffset = (currentDeviceAlpha - manualAngle + 360) % 360;
+            const currentAzimuth = getTiltCompensatedAzimuth();
+            calibratedNorthOffset = (currentAzimuth - manualAngle + 360) % 360;
 
             document.getElementById('calib-screen').classList.add('hidden');
             document.getElementById('status-bar').classList.remove('hidden');
@@ -147,12 +152,10 @@
         async function startCamera() {
             try {
                 videoStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { exact: "environment" } },
-                    audio: false
+                    video: { facingMode: { exact: "environment" } }, audio: false
                 });
                 document.getElementById('camera-feed').srcObject = videoStream;
             } catch (err) {
-                // Fallback se il puntamento posteriore "exact" fallisce
                 videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 document.getElementById('camera-feed').srcObject = videoStream;
             }
@@ -166,34 +169,65 @@
             canvas.height = window.innerHeight;
         }
 
-        // Interrogazione Overpass API gratuita (OpenStreetMap)
+        // Interrogazione Overpass e Filtro Cime Senza Nome
         async function fetchPeaks(lat, lon) {
-            const radius = 20000; // 20 km
+            const radius = 25000; // 25 km
             const query = `[out:json];node["natural"="peak"](around:${radius},${lat},${lon});out;`;
             const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
 
             try {
                 const res = await fetch(url);
                 const data = await res.json();
-                peaksData = data.elements.map(el => {
+                
+                rawPeaks = data.elements.map(el => {
+                    // Selezione nome valido con fallback su tag correlati; elimina cime anonime
+                    const name = el.tags.name || el.tags['name:it'] || el.tags.official_name || el.tags.alt_name;
+                    if (!name || !el.tags.ele) return null;
+
                     const peakLat = el.lat;
                     const peakLon = el.lon;
-                    const dist = calculateDistance(lat, lon, peakLat, peakLon);
+                    const ele = parseFloat(el.tags.ele);
+                    const distKm = calculateDistance(lat, lon, peakLat, peakLon);
                     const bearing = calculateBearing(lat, lon, peakLat, peakLon);
-                    return {
-                        name: el.tags.name || "Cima sconosciuta",
-                        ele: el.tags.ele || "N/D",
-                        dist: dist.toFixed(1),
-                        bearing: bearing
-                    };
-                });
-                document.getElementById('peaks-count').innerText = peaksData.length;
+                    
+                    // Angolo di elevazione apparente rispetto all'orizzonte (Gradi)
+                    const eleDiffMeters = ele - userAlt;
+                    const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * 180 / Math.PI;
+
+                    return { name, ele, dist: distKm, bearing, elevationAngle };
+                }).filter(p => p !== null);
+
+                processOcclusionAndDeclutter();
             } catch (e) {
                 console.error("Errore recupero cime:", e);
             }
         }
 
-        // Calcoli Geografici (Haversine e Bearing)
+        // Algoritmo di Occlusione e Filtro Cime Nascoste
+        function processOcclusionAndDeclutter() {
+            // Ordina cime dalla più vicina alla più lontana
+            rawPeaks.sort((a, b) => a.dist - b.dist);
+
+            const sectorBorders = {}; 
+            visiblePeaks = [];
+
+            rawPeaks.forEach(peak => {
+                // Raggruppa in settori di vista di 1.5 gradi
+                const sectorKey = Math.floor(peak.bearing / 1.5);
+
+                if (sectorBorders[sectorKey] !== undefined) {
+                    // Se la cima più vicina nello stesso settore ha un'elevazione apparente maggiore, la cima attuale è coperta/nascosta
+                    if (peak.elevationAngle <= sectorBorders[sectorKey]) {
+                        return; // Scarta cima occlusa
+                    }
+                }
+                sectorBorders[sectorKey] = peak.elevationAngle;
+                visiblePeaks.push(peak);
+            });
+
+            document.getElementById('peaks-count').innerText = visiblePeaks.length;
+        }
+
         function calculateDistance(lat1, lon1, lat2, lon2) {
             const R = 6371;
             const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -212,43 +246,73 @@
             return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
         }
 
-        // Drawing del Canvas AR
+        // Rendering dell'Overlay AR con Allineamento Proiettivo 3D
         function renderAR() {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Calcolo direzione corrente rispetto al Nord calibrato
-            const currentHeading = (currentDeviceAlpha - calibratedNorthOffset + 360) % 360;
-            const fovHorizontal = 60; // Campo visivo approssimativo fotocamera mobile (gradi)
+            const currentHeading = (getTiltCompensatedAzimuth() - calibratedNorthOffset + 360) % 360;
+            const fovH = 60; // Field of View Orizzontale approssimato
+            const fovV = 45; // Field of View Verticale approssimato
 
-            peaksData.forEach(peak => {
-                // Differenza d'angolo tra la vista e la cima
-                let diff = peak.bearing - currentHeading;
-                if (diff > 180) diff -= 360;
-                if (diff < -180) diff += 360;
+            // Posizione griglia 2D occupata per prevenire sovrapposizione visiva etichette
+            const renderedBoxes = [];
 
-                // Disegna solo se si trova all'interno del campo visivo
-                if (Math.abs(diff) < fovHorizontal / 2) {
-                    const x = (canvas.width / 2) + (diff * (canvas.width / fovHorizontal));
-                    // Calcolo Y semplificato basato sul Pitch
-                    const y = (canvas.height / 2) + (currentPitch * 5); 
+            visiblePeaks.forEach(peak => {
+                let diffBearing = peak.bearing - currentHeading;
+                if (diffBearing > 180) diffBearing -= 360;
+                if (diffBearing < -180) diffBearing += 360;
 
-                    // Disegno Tag Cima
+                if (Math.abs(diffBearing) < fovH / 2) {
+                    // Coordinate X e Y di base basate su azimuth, elevazione e pitch
+                    let x = (canvas.width / 2) + (diffBearing * (canvas.width / fovH));
+                    let diffPitch = peak.elevationAngle - (90 - deviceBeta);
+                    let y = (canvas.height / 2) - (diffPitch * (canvas.height / fovV));
+
+                    // Gestione Rollio (ruota le coordinate proiettate attorno al centro dello schermo)
+                    const rollRad = -deviceGamma * Math.PI / 180;
+                    const cx = canvas.width / 2;
+                    const cy = canvas.height / 2;
+                    const rx = cx + (x - cx) * Math.cos(rollRad) - (y - cy) * Math.sin(rollRad);
+                    const ry = cy + (x - cx) * Math.sin(rollRad) + (y - cy) * Math.cos(rollRad);
+
+                    // Anti-Collisione 2D etichette a schermo
+                    let adjustedY = ry;
+                    renderedBoxes.forEach(box => {
+                        if (Math.abs(box.x - rx) < 100 && Math.abs(box.y - adjustedY) < 30) {
+                            adjustedY -= 32; // Sposta l'etichetta più in alto se sovrapposta
+                        }
+                    });
+                    renderedBoxes.push({ x: rx, y: adjustedY });
+
+                    // Disegno grafica etichetta
+                    ctx.save();
+                    ctx.translate(rx, adjustedY);
+                    ctx.rotate(rollRad); // Ruota l'etichetta coerentemente con l'orizzonte inclinando lo smartphone
+
                     ctx.fillStyle = "#00E676";
                     ctx.beginPath();
-                    ctx.arc(x, y, 6, 0, Math.PI * 2);
+                    ctx.arc(0, 0, 5, 0, Math.PI * 2);
                     ctx.fill();
 
-                    ctx.fillStyle = "rgba(0,0,0,0.7)";
-                    ctx.fillRect(x - 60, y - 45, 120, 38);
+                    ctx.fillStyle = "rgba(0,0,0,0.8)";
+                    ctx.strokeStyle = "#00E676";
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.roundRect(-65, -42, 130, 34, 6);
+                    ctx.fill();
+                    ctx.stroke();
 
                     ctx.fillStyle = "#FFF";
-                    ctx.font = "bold 11px sans-serif";
+                    ctx.font = "bold 11px system-ui";
                     ctx.textAlign = "center";
-                    ctx.fillText(peak.name, x, y - 30);
-                    ctx.font = "10px sans-serif";
-                    ctx.fillText(`${peak.ele}m | ${peak.dist}km`, x, y - 16);
+                    ctx.fillText(peak.name, 0, -26);
+                    ctx.fillStyle = "#00E676";
+                    ctx.font = "10px system-ui";
+                    ctx.fillText(`${peak.ele}m | ${peak.dist.toFixed(1)}km`, 0, -13);
+
+                    ctx.restore();
                 }
             });
         }
@@ -259,10 +323,10 @@
             const btn = document.getElementById('freeze-btn');
             if (isFrozen) {
                 video.pause();
-                btn.innerText = "Sblocca Camera";
+                btn.innerText = "Sblocca Vista";
             } else {
                 video.play();
-                btn.innerText = "Scatta / Blocca";
+                btn.innerText = "Blocca Vista";
             }
         }
     </script>
