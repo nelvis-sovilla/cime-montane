@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - MVP v3</title>
+    <title>PeakFinder AR - MVP v3.1 Fixed</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; }
@@ -34,14 +34,14 @@
     <canvas id="ar-canvas"></canvas>
 
     <div id="status-bar" class="status-bar hidden">
-        GPS: <span id="gps-status">In attesa...</span> | Altitudine: <span id="user-alt">--</span>m | Cime mostrate: <span id="peaks-count">0</span>
+        GPS: <span id="gps-status">In attesa...</span> | Altitudine: <span id="user-alt">--</span>m | Cime caricate: <span id="peaks-count">0</span>
     </div>
 
     <!-- Calibrazione Nord -->
     <div id="calib-screen" class="screen">
         <div style="text-align: center; margin-top: 10px;">
             <h2>Calibrazione Nord</h2>
-            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Funziona sia in verticale che in orizzontale.</p>
+            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Supporta orientamento verticale e orizzontale.</p>
         </div>
 
         <div class="calibration-box">
@@ -52,7 +52,7 @@
                 <input type="range" id="angle-slider" min="0" max="359" value="0">
             </div>
             <p>Offset Nord: <b id="angle-val">0°</b></p>
-            <p style="font-size: 11px; color: #aaa; margin-top: 4px;">Orientamento schermo: <span id="orient-val">Portrait</span></p>
+            <p style="font-size: 11px; color: #aaa; margin-top: 4px;">Schermo: <span id="orient-val">Portrait</span></p>
         </div>
 
         <button class="btn" onclick="confirmCalibration()">Conferma e Avvia Fotocamera</button>
@@ -125,14 +125,12 @@
             });
         }
 
-        // Calcolo Azimuth Compensato per Portrait e Landscape
         function getTiltCompensatedAzimuth() {
             let alpha = deviceAlpha * Math.PI / 180;
             let beta = deviceBeta * Math.PI / 180;
             let gamma = deviceGamma * Math.PI / 180;
             const screenAngle = getScreenAngle();
 
-            // Adattamento coordinate vettoriali in base all'orientamento dello schermo
             if (screenAngle === 90) {
                 let temp = beta;
                 beta = -gamma;
@@ -187,25 +185,33 @@
             canvas.height = window.innerHeight;
         }
 
-        // Recupero, Filtraggio Drastico e Assegnazione Slot Fissi
+        // Recupero sicuro e tollerante ai dati mancanti
         async function fetchPeaks(lat, lon) {
-            const radius = 30000; // 30 km
-            const query = `[out:json];node["natural"="peak"](around:${radius},${lat},${lon});out;`;
+            const radius = 20000; // 20 km per stabilità di rete
+            const query = `[out:json][timeout:15];node["natural"="peak"](around:${radius},${lat},${lon});out;`;
             const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
 
             try {
                 const res = await fetch(url);
+                if (!res.ok) throw new Error("Errore risposta HTTP: " + res.status);
                 const data = await res.json();
                 
-                let raw = data.elements.map(el => {
-                    const name = el.tags.name || el.tags['name:it'] || el.tags.official_name;
-                    if (!name || !el.tags.ele) return null;
+                if (!data || !data.elements) return;
 
-                    const ele = parseFloat(el.tags.ele);
+                let raw = data.elements.map(el => {
+                    // Controllo di sicurezza: verifichiamo che l'elemento e i suoi tag esistano
+                    if (!el || !el.tags) return null;
+
+                    const t = el.tags;
+                    const name = t.name || t['name:it'] || t.official_name || t.alt_name || t.description;
+                    if (!name || !t.ele) return null;
+
+                    const ele = parseFloat(t.ele);
+                    if (isNaN(ele)) return null;
+
                     const distKm = calculateDistance(lat, lon, el.lat, el.lon);
                     const bearing = calculateBearing(lat, lon, el.lat, el.lon);
                     
-                    // Score di rilevanza: altitudine / radice della distanza
                     const prominenceScore = ele / Math.sqrt(distKm);
 
                     return {
@@ -215,20 +221,25 @@
                     };
                 }).filter(p => p !== null);
 
-                // 1. Ordina per rilevanza e prendi solo le migliori 12 cime in assoluto
-                raw.sort((a, b) => b.prominenceScore - a.prominenceScore);
-                let topPeaks = raw.slice(0, 12);
+                if (raw.length === 0) {
+                    document.getElementById('peaks-count').innerText = "0 (nessuna cima nei paraggi)";
+                    return;
+                }
 
-                // 2. Assegna a ogni cima uno slot verticale fisso (0, 1, 2) per evitare salti
+                // Seleziona le 15 cime più rilevanti e assegna slot verticali fissi
+                raw.sort((a, b) => b.prominenceScore - a.prominenceScore);
+                let topPeaks = raw.slice(0, 15);
+
                 topPeaks.sort((a, b) => a.dist - b.dist);
                 topPeaks.forEach((p, idx) => {
-                    p.slot = idx % 3; // 3 livelli verticali prestabiliti
+                    p.slot = idx % 3;
                 });
 
                 visiblePeaks = topPeaks;
                 document.getElementById('peaks-count').innerText = visiblePeaks.length;
             } catch (e) {
                 console.error("Errore recupero cime:", e);
+                document.getElementById('gps-status').innerText = "Errore Connessione API";
             }
         }
 
@@ -250,14 +261,13 @@
             return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
         }
 
-        // Rendering con Smoothing (LERP) e FOV dinamico
         function renderAR() {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             const isLandscape = window.innerWidth > window.innerHeight;
-            const fovH = isLandscape ? 75 : 50; // Campo visivo orizzontale in gradi
+            const fovH = isLandscape ? 75 : 50;
             const fovV = isLandscape ? 45 : 65;
 
             const currentHeading = (getTiltCompensatedAzimuth() - calibratedNorthOffset + 360) % 360;
@@ -268,34 +278,28 @@
                 if (diffBearing < -180) diffBearing += 360;
 
                 if (Math.abs(diffBearing) < fovH / 2) {
-                    // Posizione target teorica
                     let targetX = (canvas.width / 2) + (diffBearing * (canvas.width / fovH));
                     
-                    // Y fissa basata sullo slot di appartenenza (no jittering da collisione dinamica)
                     let baseCenterY = canvas.height / 2;
-                    let slotOffsetY = (peak.slot - 1) * 38; // Distanziamento verticale precalcolato
+                    let slotOffsetY = (peak.slot - 1) * 38;
                     let targetY = baseCenterY + slotOffsetY;
 
-                    // Smoothing LERP per movimento fluido
                     if (peak.smoothX === null) {
                         peak.smoothX = targetX;
                         peak.smoothY = targetY;
                     } else {
-                        peak.smoothX += (targetX - peak.smoothX) * 0.2; // Fattore di ammortizzamento
+                        peak.smoothX += (targetX - peak.smoothX) * 0.2;
                         peak.smoothY += (targetY - peak.smoothY) * 0.2;
                     }
 
-                    // Disegno etichetta su coordinate smorzate (smoothX, smoothY)
                     ctx.save();
                     ctx.translate(peak.smoothX, peak.smoothY);
 
-                    // Pallino cima
                     ctx.fillStyle = "#00E676";
                     ctx.beginPath();
                     ctx.arc(0, 0, 5, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // Box Info
                     ctx.fillStyle = "rgba(0,0,0,0.85)";
                     ctx.strokeStyle = "#00E676";
                     ctx.lineWidth = 1;
@@ -304,7 +308,6 @@
                     ctx.fill();
                     ctx.stroke();
 
-                    // Testo
                     ctx.fillStyle = "#FFF";
                     ctx.font = "bold 11px system-ui";
                     ctx.textAlign = "center";
@@ -315,7 +318,6 @@
 
                     ctx.restore();
                 } else {
-                    // Reset coordinate se la cima esce dallo schermo
                     peak.smoothX = null;
                     peak.smoothY = null;
                 }
