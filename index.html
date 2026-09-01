@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - MVP v3.2</title>
+    <title>PeakFinder AR - MVP v3.3</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; }
@@ -24,7 +24,7 @@
         .btn-secondary { background: #333; color: #fff; }
         input[type=range] { width: 100%; height: 48px; }
 
-        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; pointer-events: none; border: 1px solid #444; }
+        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; pointer-events: none; border: 1px solid #444; }
         .controls-bar { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; z-index: 5; gap: 10px; }
     </style>
 </head>
@@ -34,14 +34,14 @@
     <canvas id="ar-canvas"></canvas>
 
     <div id="status-bar" class="status-bar hidden">
-        GPS: <span id="gps-status">In attesa...</span> | Stato API: <span id="api-status">Inizializzazione...</span> | Cime: <span id="peaks-count">0</span>
+        GPS: <span id="gps-status">In attesa...</span> | Fonte: <span id="api-status">Inizializzazione...</span> | Cime: <span id="peaks-count">0</span>
     </div>
 
     <!-- Calibrazione Nord -->
     <div id="calib-screen" class="screen">
         <div style="text-align: center; margin-top: 10px;">
             <h2>Calibrazione Nord</h2>
-            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Funziona sia in verticale che in orizzontale.</p>
+            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord geografico. Funziona sia in verticale che in orizzontale.</p>
         </div>
 
         <div class="calibration-box">
@@ -70,6 +70,18 @@
         let visiblePeaks = [];
         let isFrozen = false;
         let videoStream = null;
+
+        // Database locale di emergenza (Appennino / principali rilievi)
+        const offlineBackupPeaks = [
+            { name: "Monte Cimone", lat: 44.1938, lon: 10.6997, ele: 2165 },
+            { name: "Corno alle Scale", lat: 44.1228, lon: 10.8317, ele: 1945 },
+            { name: "Monte Cusna", lat: 44.2883, lon: 10.4014, ele: 2121 },
+            { name: "Monte Venere", lat: 44.2251, lon: 11.2721, ele: 965 },
+            { name: "Monte Adone", lat: 44.3314, lon: 11.3103, ele: 654 },
+            { name: "Monte della Formica", lat: 44.3381, lon: 11.3812, ele: 538 },
+            { name: "Monte Vigese", lat: 44.2381, lon: 11.1091, ele: 1091 },
+            { name: "Colle di San Luca", lat: 44.4792, lon: 11.3142, ele: 300 }
+        ];
 
         const slider = document.getElementById('angle-slider');
         const arrow = document.getElementById('arrow');
@@ -101,7 +113,7 @@
                         userLon = pos.coords.longitude;
                         userAlt = pos.coords.altitude || 0;
                         document.getElementById('gps-status').innerText = `${userLat.toFixed(3)}, ${userLon.toFixed(3)}`;
-                        if (visiblePeaks.length === 0) fetchPeaksWithFallback(userLat, userLon);
+                        if (visiblePeaks.length === 0) fetchPeaksFastBBox(userLat, userLon);
                     },
                     err => { document.getElementById('gps-status').innerText = "Errore GPS"; },
                     { enableHighAccuracy: true }
@@ -184,55 +196,57 @@
             canvas.height = window.innerHeight;
         }
 
-        // Sistema di Chiamata Multi-Server con Fallback Automatico
-        async function fetchPeaksWithFallback(lat, lon) {
-            const radius = 20000; // 20 km
-            const query = `[out:json][timeout:10];node["natural"="peak"](around:${radius},${lat},${lon});out body;`;
+        // Chiamata ultra-veloce basata su Bounding Box (BBOX)
+        async function fetchPeaksFastBBox(lat, lon) {
+            const statusEl = document.getElementById('api-status');
+            statusEl.innerText = "Ricerca online...";
+
+            // Calcolo rettangolo ~20km
+            const minLat = (lat - 0.18).toFixed(4);
+            const maxLat = (lat + 0.18).toFixed(4);
+            const minLon = (lon - 0.25).toFixed(4);
+            const maxLon = (lon + 0.25).toFixed(4);
+
+            const query = `[out:json][timeout:5];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body;`;
             
-            const endpoints = [
+            const servers = [
                 "https://overpass-api.de/api/interpreter",
-                "https://overpass.kumi.systems/api/interpreter",
-                "https://overpass.private.coffee/api/interpreter"
+                "https://overpass.kumi.systems/api/interpreter"
             ];
 
-            const statusEl = document.getElementById('api-status');
-
-            for (let i = 0; i < endpoints.length; i++) {
-                const url = `${endpoints[i]}?data=${encodeURIComponent(query)}`;
-                statusEl.innerText = `Download (Server ${i + 1})...`;
-
+            for (let server of servers) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6 sec timeout per endpoint
+                    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-                    const res = await fetch(url, { signal: controller.signal });
+                    const res = await fetch(`${server}?data=${encodeURIComponent(query)}`, { signal: controller.signal });
                     clearTimeout(timeoutId);
 
-                    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
-                    const data = await res.json();
-
-                    if (data && data.elements) {
-                        statusEl.innerText = "OK";
-                        processPeaksData(data.elements, lat, lon);
-                        return; // Successo, esce dal ciclo
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.elements && data.elements.length > 0) {
+                            statusEl.innerText = "Online (OpenStreetMap)";
+                            processPeaksData(data.elements, lat, lon);
+                            return;
+                        }
                     }
-                } catch (err) {
-                    console.warn(`Server ${endpoints[i]} fallito. Tento il successivo...`, err);
+                } catch (e) {
+                    console.warn("Server occupato, tento successivo...");
                 }
             }
 
-            statusEl.innerText = "Errore Connessione (Tutti i server occupati)";
+            // Fallback su database locale se i server rifiutano la connessione
+            statusEl.innerText = "Offline (Dati locali)";
+            processOfflinePeaks(lat, lon);
         }
 
         function processPeaksData(elements, lat, lon) {
             let raw = elements.map(el => {
                 if (!el || !el.tags) return null;
+                const name = el.tags.name || el.tags['name:it'] || el.tags.official_name;
+                if (!name || !el.tags.ele) return null;
 
-                const t = el.tags;
-                const name = t.name || t['name:it'] || t.official_name || t.alt_name;
-                if (!name || !t.ele) return null;
-
-                const ele = parseFloat(t.ele);
+                const ele = parseFloat(el.tags.ele);
                 if (isNaN(ele)) return null;
 
                 const distKm = calculateDistance(lat, lon, el.lat, el.lon);
@@ -242,12 +256,27 @@
                 return { name, ele, dist: distKm, bearing, prominenceScore, smoothX: null, smoothY: null };
             }).filter(p => p !== null);
 
+            finalizePeakList(raw);
+        }
+
+        function processOfflinePeaks(lat, lon) {
+            let raw = offlineBackupPeaks.map(p => {
+                const distKm = calculateDistance(lat, lon, p.lat, p.lon);
+                const bearing = calculateBearing(lat, lon, p.lat, p.lon);
+                const prominenceScore = p.ele / Math.sqrt(distKm);
+
+                return { name: p.name, ele: p.ele, dist: distKm, bearing, prominenceScore, smoothX: null, smoothY: null };
+            });
+
+            finalizePeakList(raw);
+        }
+
+        function finalizePeakList(raw) {
             if (raw.length === 0) {
                 document.getElementById('peaks-count').innerText = "0";
                 return;
             }
 
-            // Selezione delle 12 cime più rilevanti e posizionamento verticale a slot
             raw.sort((a, b) => b.prominenceScore - a.prominenceScore);
             let topPeaks = raw.slice(0, 12);
 
