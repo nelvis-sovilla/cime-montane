@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - MVP v3.8 (Rosso)</title>
+    <title>PeakFinder AR - MVP v3.9 (Verde)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; }
@@ -15,16 +15,16 @@
         .hidden { display: none !important; }
 
         .calibration-box { background: rgba(20,20,20,0.95); padding: 20px; border-radius: 16px; text-align: center; margin: auto 0; border: 1px solid #333; }
-        .compass-dial { width: 160px; height: 160px; border: 4px solid #FF1744; border-radius: 50%; margin: 15px auto; position: relative; display: flex; align-items: center; justify-content: center; }
-        .arrow { width: 6px; height: 70px; background: #FF1744; position: absolute; transform-origin: bottom center; top: 10px; border-radius: 4px; }
-        .arrow::before { content: ''; position: absolute; top: -10px; left: -7px; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 15px solid #FF1744; }
+        .compass-dial { width: 160px; height: 160px; border: 4px solid #00E676; border-radius: 50%; margin: 15px auto; position: relative; display: flex; align-items: center; justify-content: center; }
+        .arrow { width: 6px; height: 70px; background: #00E676; position: absolute; transform-origin: bottom center; top: 10px; border-radius: 4px; }
+        .arrow::before { content: ''; position: absolute; top: -10px; left: -7px; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 15px solid #00E676; }
 
-        .btn { min-height: 48px; min-width: 48px; background: #FF1744; color: #fff; border: none; padding: 12px 24px; font-weight: bold; font-size: 16px; border-radius: 24px; cursor: pointer; margin: 5px; }
+        .btn { min-height: 48px; min-width: 48px; background: #00E676; color: #000; border: none; padding: 12px 24px; font-weight: bold; font-size: 16px; border-radius: 24px; cursor: pointer; margin: 5px; }
         .btn:active { opacity: 0.8; }
         .btn-secondary { background: #333; color: #fff; }
-        input[type=range] { width: 100%; height: 48px; accent-color: #FF1744; }
+        input[type=range] { width: 100%; height: 48px; accent-color: #00E676; }
 
-        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; pointer-events: none; border: 1px solid #FF1744; }
+        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; pointer-events: none; border: 1px solid #00E676; }
         .controls-bar { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; z-index: 5; gap: 10px; }
     </style>
 </head>
@@ -40,8 +40,8 @@
     <!-- Calibrazione Nord -->
     <div id="calib-screen" class="screen">
         <div style="text-align: center; margin-top: 10px;">
-            <h2>Calibrazione Nord (v3.8)</h2>
-            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Tracciamento 3D separato per Verticale e Orizzontale.</p>
+            <h2>Calibrazione Nord (v3.9)</h2>
+            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Calcolo 3D unificato per Portrait e Landscape.</p>
         </div>
 
         <div class="calibration-box">
@@ -128,11 +128,8 @@
             });
         }
 
-        // Calcolo distinto di Azimuth e Pitch per Portrait e Landscape
+        // Matrice di rotazione vettoriale 3D assoluta della fotocamera posteriore
         function getCameraOrientation3D() {
-            const isLandscape = window.innerWidth > window.innerHeight;
-            let azimuth, pitch;
-
             const degToRad = Math.PI / 180;
             const alpha = deviceAlpha * degToRad;
             const beta = deviceBeta * degToRad;
@@ -142,21 +139,16 @@
             const cB = Math.cos(beta),  sB = Math.sin(beta);
             const cG = Math.cos(gamma), sG = Math.sin(gamma);
 
-            const x = -cA * sG - sA * sB * cG;
-            const y = -sA * sG + cA * sB * cG;
-            azimuth = (Math.atan2(x, y) * 180 / Math.PI + 360) % 360;
+            // Vettore fotocamera posteriore nello spazio terrestre (East, North, Up)
+            const vx = -cA * sG - sA * sB * cG;
+            const vy = -sA * sG + cA * sB * cG;
+            const vz = -cB * cG;
 
-            if (!isLandscape) {
-                // Modalità Verticale (Portrait)
-                pitch = deviceBeta - 90;
-            } else {
-                // Modalità Orizzontale (Landscape)
-                const absGamma = Math.abs(deviceGamma);
-                pitch = 90 - absGamma;
-                if (deviceBeta < 0) {
-                    pitch = -pitch;
-                }
-            }
+            let azimuth = (Math.atan2(vx, vy) * 180 / Math.PI + 360) % 360;
+            
+            // Elevazione d'inclinazione reale del sensore
+            const clampedZ = Math.max(-1, Math.min(1, vz));
+            let pitch = Math.asin(clampedZ) * 180 / Math.PI;
 
             return { azimuth, pitch };
         }
@@ -350,7 +342,9 @@
 
                 if (Math.abs(diffBearing) < fovH / 2 && Math.abs(diffPitch) < fovV / 2) {
                     let targetX = (canvas.width / 2) + (diffBearing * (canvas.width / fovH));
-                    let targetY = (canvas.height / 2) + (diffPitch * (canvas.height / fovV)) + ((peak.slot - 1) * 25);
+                    
+                    // Inversione Y: puntando in alto (diffPitch < 0) l'etichetta scende verso il basso dello schermo
+                    let targetY = (canvas.height / 2) - (diffPitch * (canvas.height / fovV)) + ((peak.slot - 1) * 25);
 
                     if (peak.smoothX === null) {
                         peak.smoothX = targetX;
@@ -363,13 +357,13 @@
                     ctx.save();
                     ctx.translate(peak.smoothX, peak.smoothY);
 
-                    ctx.fillStyle = "#FF1744";
+                    ctx.fillStyle = "#00E676";
                     ctx.beginPath();
                     ctx.arc(0, 0, 5, 0, Math.PI * 2);
                     ctx.fill();
 
                     ctx.fillStyle = "rgba(0,0,0,0.85)";
-                    ctx.strokeStyle = "#FF1744";
+                    ctx.strokeStyle = "#00E676";
                     ctx.lineWidth = 1;
                     ctx.beginPath();
                     ctx.roundRect(-60, -38, 120, 32, 6);
@@ -382,7 +376,7 @@
                     ctx.font = "bold 11px system-ui";
                     ctx.textAlign = "center";
                     ctx.fillText(peak.name, 0, -22);
-                    ctx.fillStyle = "#FF1744";
+                    ctx.fillStyle = "#00E676";
                     ctx.font = "10px system-ui";
                     ctx.fillText(`${peak.ele}m | ${safeDist}km`, 0, -10);
 
