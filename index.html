@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - MVP v3.5</title>
+    <title>PeakFinder AR - MVP v3.6</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; }
@@ -41,7 +41,7 @@
     <div id="calib-screen" class="screen">
         <div style="text-align: center; margin-top: 10px;">
             <h2>Calibrazione Nord</h2>
-            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Funziona in qualsiasi orientamento dello schermo.</p>
+            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Funziona sia in verticale che in orizzontale.</p>
         </div>
 
         <div class="calibration-box">
@@ -130,7 +130,7 @@
             });
         }
 
-        // Calcolo completo Vettore 3D Fotocamera (Azimuth e Pitch reali)
+        // Calcolo completo Vettore 3D Fotocamera
         function getCameraOrientation3D() {
             const degToRad = Math.PI / 180;
             const alpha = deviceAlpha * degToRad;
@@ -142,31 +142,33 @@
             const cG = Math.cos(gamma), sG = Math.sin(gamma);
 
             // Vettore fotocamera posteriore nello spazio terrestre (East, North, Up)
-            const x = -\cos(alpha) * \sin(gamma) - \sin(alpha) * \sin(beta) * \cos(gamma);
-            const y = -\sin(alpha) * \sin(gamma) + \cos(alpha) * \sin(beta) * \cos(gamma);
-            const z = -\cos(beta) * \cos(gamma);
+            const x = -cA * sG - sA * sB * cG;
+            const y = -sA * sG + cA * sB * cG;
+            const z = -cB * cG;
 
-            // Azimuth orizzontale
             let azimuth = Math.atan2(x, y) * 180 / Math.PI;
             azimuth = (azimuth + 360) % 360;
 
-            // Pitch verticale (inclinazione guardando in alto/basso)
             const clampedZ = Math.max(-1, Math.min(1, z));
             const pitch = Math.asin(clampedZ) * 180 / Math.PI;
 
             return { azimuth, pitch };
         }
 
-        function confirmCalibration() {
-            const manualAngle = parseInt(slider.value);
-            const cam = getCameraOrientation3D();
-            calibratedNorthOffset = (cam.azimuth - manualAngle + 360) % 360;
+        async function confirmCalibration() {
+            try {
+                const manualAngle = parseInt(slider.value);
+                const cam = getCameraOrientation3D();
+                calibratedNorthOffset = (cam.azimuth - manualAngle + 360) % 360;
 
-            document.getElementById('calib-screen').classList.add('hidden');
-            document.getElementById('status-bar').classList.remove('hidden');
-            document.getElementById('ar-controls').classList.remove('hidden');
+                document.getElementById('calib-screen').classList.add('hidden');
+                document.getElementById('status-bar').classList.remove('hidden');
+                document.getElementById('ar-controls').classList.remove('hidden');
 
-            startCamera();
+                await startCamera();
+            } catch (err) {
+                alert("Impossibile avviare la fotocamera: verificare i permessi del browser.");
+            }
         }
 
         function recalibrate() {
@@ -247,7 +249,6 @@
                 const distKm = calculateDistance(lat, lon, el.lat, el.lon);
                 const bearing = calculateBearing(lat, lon, el.lat, el.lon);
                 
-                // Calcolo Elevazione Angolare della Cima (Gradi)
                 const eleDiffMeters = ele - userAlt;
                 const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * 180 / Math.PI;
                 const prominenceScore = ele / Math.sqrt(distKm);
@@ -266,7 +267,7 @@
                 const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * 180 / Math.PI;
                 const prominenceScore = p.ele / Math.sqrt(distKm);
 
-                return { name: p.name, ele: p.ele, dist: distKm, bearing, elevationAngle, prominenceScore, smoothX: null, smoothY: null };
+                return { name: p.name, ele: p.ele, dist: p.distKm, bearing, elevationAngle, prominenceScore, smoothX: null, smoothY: null };
             });
 
             finalizePeakList(raw);
@@ -306,14 +307,12 @@
             return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
         }
 
-        // Proiezione AR 3D dinamica (X = Azimuth, Y = Elevazione/Pitch)
         function renderAR() {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             const isLandscape = window.innerWidth > window.innerHeight;
-            // FOV dinamico basato sull'orientamento dello schermo
             const fovH = isLandscape ? 75 : 50;
             const fovV = isLandscape ? 45 : 65;
 
@@ -322,18 +321,14 @@
             const currentPitch = cam.pitch;
 
             visiblePeaks.forEach(peak => {
-                // Differenza Orizzontale (X)
                 let diffBearing = peak.bearing - currentHeading;
                 if (diffBearing > 180) diffBearing -= 360;
                 if (diffBearing < -180) diffBearing += 360;
 
-                // Differenza Verticale (Y) tra elevazione cima e pitch fotocamera
                 let diffPitch = peak.elevationAngle - currentPitch;
 
-                // Disegna solo se si trova nell'inquadratura (Sia X che Y)
                 if (Math.abs(diffBearing) < fovH / 2 && Math.abs(diffPitch) < fovV / 2) {
                     let targetX = (canvas.width / 2) + (diffBearing * (canvas.width / fovH));
-                    // Y dinamico che risponde al puntamento in alto/basso + offset slot
                     let targetY = (canvas.height / 2) - (diffPitch * (canvas.height / fovV)) + ((peak.slot - 1) * 25);
 
                     if (peak.smoothX === null) {
@@ -347,13 +342,11 @@
                     ctx.save();
                     ctx.translate(peak.smoothX, peak.smoothY);
 
-                    // Indicatore Cima
                     ctx.fillStyle = "#00E676";
                     ctx.beginPath();
                     ctx.arc(0, 0, 5, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // Box Dettagli
                     ctx.fillStyle = "rgba(0,0,0,0.85)";
                     ctx.strokeStyle = "#00E676";
                     ctx.lineWidth = 1;
@@ -362,7 +355,6 @@
                     ctx.fill();
                     ctx.stroke();
 
-                    // Dati Cima
                     ctx.fillStyle = "#FFF";
                     ctx.font = "bold 11px system-ui";
                     ctx.textAlign = "center";
@@ -393,5 +385,4 @@
         }
     </script>
 </body>
-    </html>
-    
+</html>
