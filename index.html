@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - MVP v3.6</title>
+    <title>PeakFinder AR - MVP v3.7</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; }
@@ -70,6 +70,7 @@
         let visiblePeaks = [];
         let isFrozen = false;
         let videoStream = null;
+        let animFrameId = null;
 
         const offlineBackupPeaks = [
             { name: "Monte Cimone", lat: 44.1938, lon: 10.6997, ele: 2165 },
@@ -124,13 +125,9 @@
 
                 const isLandscape = window.innerWidth > window.innerHeight;
                 document.getElementById('orient-val').innerText = isLandscape ? "Landscape" : "Portrait";
-
-                if (!document.getElementById('calib-screen').classList.contains('hidden')) return;
-                renderAR();
             });
         }
 
-        // Calcolo completo Vettore 3D Fotocamera
         function getCameraOrientation3D() {
             const degToRad = Math.PI / 180;
             const alpha = deviceAlpha * degToRad;
@@ -141,16 +138,13 @@
             const cB = Math.cos(beta),  sB = Math.sin(beta);
             const cG = Math.cos(gamma), sG = Math.sin(gamma);
 
-            // Vettore fotocamera posteriore nello spazio terrestre (East, North, Up)
             const x = -cA * sG - sA * sB * cG;
             const y = -sA * sG + cA * sB * cG;
-            const z = -cB * cG;
 
             let azimuth = Math.atan2(x, y) * 180 / Math.PI;
             azimuth = (azimuth + 360) % 360;
 
-            const clampedZ = Math.max(-1, Math.min(1, z));
-            const pitch = Math.asin(clampedZ) * 180 / Math.PI;
+            let pitch = 90 - deviceBeta;
 
             return { azimuth, pitch };
         }
@@ -166,12 +160,16 @@
                 document.getElementById('ar-controls').classList.remove('hidden');
 
                 await startCamera();
+                startARLoop();
             } catch (err) {
-                alert("Impossibile avviare la fotocamera: verificare i permessi del browser.");
+                alert("Impossibile avviare la fotocamera: verificare i permessi.");
             }
         }
 
         function recalibrate() {
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+            visiblePeaks.forEach(p => { p.smoothX = null; p.smoothY = null; });
+
             document.getElementById('calib-screen').classList.remove('hidden');
             document.getElementById('status-bar').classList.add('hidden');
             document.getElementById('ar-controls').classList.add('hidden');
@@ -267,7 +265,7 @@
                 const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * 180 / Math.PI;
                 const prominenceScore = p.ele / Math.sqrt(distKm);
 
-                return { name: p.name, ele: p.ele, dist: p.distKm, bearing, elevationAngle, prominenceScore, smoothX: null, smoothY: null };
+                return { name: p.name, ele: p.ele, dist: distKm, bearing, elevationAngle, prominenceScore, smoothX: null, smoothY: null };
             });
 
             finalizePeakList(raw);
@@ -307,6 +305,17 @@
             return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
         }
 
+        function startARLoop() {
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+            function loop() {
+                if (!isFrozen && document.getElementById('calib-screen').classList.contains('hidden')) {
+                    renderAR();
+                }
+                animFrameId = requestAnimationFrame(loop);
+            }
+            loop();
+        }
+
         function renderAR() {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
@@ -329,7 +338,7 @@
 
                 if (Math.abs(diffBearing) < fovH / 2 && Math.abs(diffPitch) < fovV / 2) {
                     let targetX = (canvas.width / 2) + (diffBearing * (canvas.width / fovH));
-                    let targetY = (canvas.height / 2) - (diffPitch * (canvas.height / fovV)) + ((peak.slot - 1) * 25);
+                    let targetY = (canvas.height / 2) + (diffPitch * (canvas.height / fovV)) + ((peak.slot - 1) * 25);
 
                     if (peak.smoothX === null) {
                         peak.smoothX = targetX;
@@ -355,13 +364,15 @@
                     ctx.fill();
                     ctx.stroke();
 
+                    const safeDist = (typeof peak.dist === 'number' && !isNaN(peak.dist)) ? peak.dist.toFixed(1) : "0.0";
+
                     ctx.fillStyle = "#FFF";
                     ctx.font = "bold 11px system-ui";
                     ctx.textAlign = "center";
                     ctx.fillText(peak.name, 0, -22);
                     ctx.fillStyle = "#00E676";
                     ctx.font = "10px system-ui";
-                    ctx.fillText(`${peak.ele}m | ${peak.dist.toFixed(1)}km`, 0, -10);
+                    ctx.fillText(`${peak.ele}m | ${safeDist}km`, 0, -10);
 
                     ctx.restore();
                 } else {
