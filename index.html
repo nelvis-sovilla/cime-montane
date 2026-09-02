@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - MVP v3.12 (Rosso Fix)</title>
+    <title>PeakFinder AR - MVP v3.13 (Verde Fix)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; }
@@ -15,22 +15,23 @@
         .hidden { display: none !important; }
 
         .calibration-box { background: rgba(20,20,20,0.95); padding: 20px; border-radius: 16px; text-align: center; margin: auto 0; border: 1px solid #333; }
-        .compass-dial { width: 160px; height: 160px; border: 4px solid #FF1744; border-radius: 50%; margin: 15px auto; position: relative; display: flex; align-items: center; justify-content: center; }
-        .arrow { width: 6px; height: 70px; background: #FF1744; position: absolute; transform-origin: bottom center; top: 10px; border-radius: 4px; }
-        .arrow::before { content: ''; position: absolute; top: -10px; left: -7px; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 15px solid #FF1744; }
+        .compass-dial { width: 160px; height: 160px; border: 4px solid #00E676; border-radius: 50%; margin: 15px auto; position: relative; display: flex; align-items: center; justify-content: center; }
+        .arrow { width: 6px; height: 70px; background: #00E676; position: absolute; transform-origin: bottom center; top: 10px; border-radius: 4px; }
+        .arrow::before { content: ''; position: absolute; top: -10px; left: -7px; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 15px solid #00E676; }
 
-        .btn { min-height: 48px; min-width: 48px; background: #FF1744; color: #fff; border: none; padding: 12px 24px; font-weight: bold; font-size: 16px; border-radius: 24px; cursor: pointer; margin: 5px; }
-        .btn:active { opacity: 0.8; }
+        .btn { min-height: 48px; min-width: 48px; background: #00E676; color: #000; border: none; padding: 12px 24px; font-weight: bold; font-size: 16px; border-radius: 24px; cursor: pointer; margin: 5px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn:active:not(:disabled) { opacity: 0.8; }
         .btn-secondary { background: #333; color: #fff; }
-        input[type=range] { width: 100%; height: 48px; accent-color: #FF1744; }
+        input[type=range] { width: 100%; height: 48px; accent-color: #00E676; }
 
-        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; pointer-events: none; border: 1px solid #FF1744; }
+        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; pointer-events: none; border: 1px solid #00E676; }
         .controls-bar { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; z-index: 5; gap: 10px; }
     </style>
 </head>
 <body>
 
-    <video id="camera-feed" autoplay playsinline></video>
+    <video id="camera-feed" autoplay playsinline muted></video>
     <canvas id="ar-canvas"></canvas>
 
     <div id="status-bar" class="status-bar hidden">
@@ -40,8 +41,8 @@
     <!-- Calibrazione Nord -->
     <div id="calib-screen" class="screen">
         <div style="text-align: center; margin-top: 10px;">
-            <h2>Calibrazione Nord (v3.12)</h2>
-            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Correzione compatibilità Canvas WebView.</p>
+            <h2>Calibrazione Nord (v3.13)</h2>
+            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Flusso avvio fotocamera protetto.</p>
         </div>
 
         <div class="calibration-box">
@@ -55,7 +56,7 @@
             <p style="font-size: 11px; color: #aaa; margin-top: 4px;">Schermo: <span id="orient-val">Portrait</span></p>
         </div>
 
-        <button class="btn" onclick="confirmCalibration()">Conferma e Avvia Fotocamera</button>
+        <button id="calib-btn" class="btn" onclick="confirmCalibration()">Conferma e Avvia Fotocamera</button>
     </div>
 
     <div id="ar-controls" class="controls-bar hidden">
@@ -86,6 +87,7 @@
         const slider = document.getElementById('angle-slider');
         const arrow = document.getElementById('arrow');
         const angleVal = document.getElementById('angle-val');
+        const calibBtn = document.getElementById('calib-btn');
 
         slider.addEventListener('input', (e) => {
             const val = e.target.value;
@@ -101,9 +103,13 @@
         });
 
         function getScreenAngle() {
-            return (screen.orientation && screen.orientation.angle !== undefined) 
-                ? screen.orientation.angle 
-                : (window.orientation || 0);
+            if (screen && screen.orientation && typeof screen.orientation.angle === 'number') {
+                return screen.orientation.angle;
+            }
+            if (typeof window.orientation === 'number') {
+                return window.orientation;
+            }
+            return 0;
         }
 
         function initGPS() {
@@ -182,23 +188,30 @@
         }
 
         async function confirmCalibration() {
-            try {
-                const manualAngle = parseInt(slider.value) || 0;
-                const screenVecs = getScreenVectors();
-                
-                const camHeading = (Math.atan2(screenVecs.F[0], screenVecs.F[1]) * 180 / Math.PI + 360) % 360;
-                calibratedNorthOffset = (camHeading - manualAngle + 360) % 360;
+            calibBtn.innerText = "Avvio fotocamera...";
+            calibBtn.disabled = true;
 
-                document.getElementById('calib-screen').classList.add('hidden');
-                document.getElementById('status-bar').classList.remove('hidden');
-                document.getElementById('ar-controls').classList.remove('hidden');
-
-                await startCamera();
-                startARLoop();
-            } catch (err) {
-                console.error("Errore calibrazione:", err);
-                alert("Errore avvio fotocamera: verificare i permessi.");
+            const cameraStarted = await startCamera();
+            if (!cameraStarted) {
+                calibBtn.innerText = "Conferma e Avvia Fotocamera";
+                calibBtn.disabled = false;
+                return;
             }
+
+            const manualAngle = parseInt(slider.value) || 0;
+            const screenVecs = getScreenVectors();
+            
+            const camHeading = (Math.atan2(screenVecs.F[0], screenVecs.F[1]) * 180 / Math.PI + 360) % 360;
+            calibratedNorthOffset = (camHeading - manualAngle + 360) % 360;
+
+            document.getElementById('calib-screen').classList.add('hidden');
+            document.getElementById('status-bar').classList.remove('hidden');
+            document.getElementById('ar-controls').classList.remove('hidden');
+
+            calibBtn.innerText = "Conferma e Avvia Fotocamera";
+            calibBtn.disabled = false;
+
+            startARLoop();
         }
 
         function recalibrate() {
@@ -211,16 +224,27 @@
         }
 
         async function startCamera() {
-            try {
-                videoStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { exact: "environment" } }, audio: false
-                });
-                document.getElementById('camera-feed').srcObject = videoStream;
-            } catch (err) {
-                videoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                document.getElementById('camera-feed').srcObject = videoStream;
+            const video = document.getElementById('camera-feed');
+            const constraintsList = [
+                { video: { facingMode: "environment" }, audio: false },
+                { video: { facingMode: { exact: "environment" } }, audio: false },
+                { video: true, audio: false }
+            ];
+
+            for (let constraints of constraintsList) {
+                try {
+                    videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    video.srcObject = videoStream;
+                    await video.play();
+                    resizeCanvas();
+                    return true;
+                } catch (e) {
+                    console.warn("Tentativo fotocamera fallito:", constraints, e);
+                }
             }
-            resizeCanvas();
+
+            alert("Impossibile accedere alla fotocamera. Verifica di aver concesso i permessi al browser e che l'URL utilizzi HTTPS.");
+            return false;
         }
 
         function resizeCanvas() {
@@ -351,7 +375,6 @@
             loop();
         }
 
-        // Helper per il disegno di rettangoli con angoli arrotondati compatibile con qualsiasi browser
         function drawRoundRect(ctx, x, y, w, h, r) {
             if (ctx.roundRect) {
                 ctx.beginPath();
@@ -413,24 +436,8 @@
                         ctx.save();
                         ctx.translate(peak.smoothX, peak.smoothY);
 
-                        ctx.fillStyle = "#FF1744";
+                        ctx.fillStyle = "#00E676";
                         ctx.beginPath();
                         ctx.arc(0, 0, 5, 0, Math.PI * 2);
                         ctx.fill();
-
-                        ctx.fillStyle = "rgba(0,0,0,0.85)";
-                        ctx.strokeStyle = "#FF1744";
-                        ctx.lineWidth = 1;
-                        drawRoundRect(ctx, -60, -38, 120, 32, 6);
-                        ctx.fill();
-                        ctx.stroke();
-
-                        const safeDist = (typeof peak.dist === 'number' && !isNaN(peak.dist)) ? peak.dist.toFixed(1) : "0.0";
-
-                        ctx.fillStyle = "#FFF";
-                        ctx.font = "bold 11px system-ui";
-                        ctx.textAlign = "center";
-                        ctx.fillText(peak.name, 0, -22);
-                        ctx.fillStyle = "#FF1744";
-                        ctx.font = "10px system-ui";
-                        ctx.fi
+    
