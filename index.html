@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - MVP v3.10 (Rosso)</title>
+    <title>PeakFinder AR - MVP v3.11 (Verde 3D Matrix)</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; }
@@ -15,16 +15,16 @@
         .hidden { display: none !important; }
 
         .calibration-box { background: rgba(20,20,20,0.95); padding: 20px; border-radius: 16px; text-align: center; margin: auto 0; border: 1px solid #333; }
-        .compass-dial { width: 160px; height: 160px; border: 4px solid #FF1744; border-radius: 50%; margin: 15px auto; position: relative; display: flex; align-items: center; justify-content: center; }
-        .arrow { width: 6px; height: 70px; background: #FF1744; position: absolute; transform-origin: bottom center; top: 10px; border-radius: 4px; }
-        .arrow::before { content: ''; position: absolute; top: -10px; left: -7px; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 15px solid #FF1744; }
+        .compass-dial { width: 160px; height: 160px; border: 4px solid #00E676; border-radius: 50%; margin: 15px auto; position: relative; display: flex; align-items: center; justify-content: center; }
+        .arrow { width: 6px; height: 70px; background: #00E676; position: absolute; transform-origin: bottom center; top: 10px; border-radius: 4px; }
+        .arrow::before { content: ''; position: absolute; top: -10px; left: -7px; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 15px solid #00E676; }
 
-        .btn { min-height: 48px; min-width: 48px; background: #FF1744; color: #fff; border: none; padding: 12px 24px; font-weight: bold; font-size: 16px; border-radius: 24px; cursor: pointer; margin: 5px; }
+        .btn { min-height: 48px; min-width: 48px; background: #00E676; color: #000; border: none; padding: 12px 24px; font-weight: bold; font-size: 16px; border-radius: 24px; cursor: pointer; margin: 5px; }
         .btn:active { opacity: 0.8; }
         .btn-secondary { background: #333; color: #fff; }
-        input[type=range] { width: 100%; height: 48px; accent-color: #FF1744; }
+        input[type=range] { width: 100%; height: 48px; accent-color: #00E676; }
 
-        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; pointer-events: none; border: 1px solid #FF1744; }
+        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; pointer-events: none; border: 1px solid #00E676; }
         .controls-bar { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; z-index: 5; gap: 10px; }
     </style>
 </head>
@@ -40,8 +40,8 @@
     <!-- Calibrazione Nord -->
     <div id="calib-screen" class="screen">
         <div style="text-align: center; margin-top: 10px;">
-            <h2>Calibrazione Nord (v3.10)</h2>
-            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Supporto dinamico rotazione etichette in orizzontale.</p>
+            <h2>Calibrazione Nord (v3.11)</h2>
+            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord. Proiezione Vettoriale 3D Pura.</p>
         </div>
 
         <div class="calibration-box">
@@ -129,49 +129,69 @@
                 deviceBeta = e.beta || 0;
                 deviceGamma = e.gamma || 0;
 
-                const isLandscape = window.innerWidth > window.innerHeight || Math.abs(deviceGamma) > 45;
+                const isLandscape = window.innerWidth > window.innerHeight;
                 document.getElementById('orient-val').innerText = isLandscape ? "Landscape" : "Portrait";
             });
         }
 
-        // Calcolo unificato orientamento 3D adattato allo schermo
-        function getCameraOrientation3D() {
-            const screenAngle = getScreenAngle();
-            const isLandscapeViewport = window.innerWidth > window.innerHeight;
-            
+        // Matrice di Rotazione 3D Assoluta e Trasformazione Vettoriale
+        function getScreenVectors() {
             const degToRad = Math.PI / 180;
-            const alpha = deviceAlpha * degToRad;
-            const beta = deviceBeta * degToRad;
-            const gamma = deviceGamma * degToRad;
+            const a = deviceAlpha * degToRad;
+            const b = deviceBeta * degToRad;
+            const g = deviceGamma * degToRad;
 
-            const cA = Math.cos(alpha), sA = Math.sin(alpha);
-            const cB = Math.cos(beta),  sB = Math.sin(beta);
-            const cG = Math.cos(gamma), sG = Math.sin(gamma);
+            const cA = Math.cos(a), sA = Math.sin(a);
+            const cB = Math.cos(b), sB = Math.sin(b);
+            const cG = Math.cos(g), sG = Math.sin(g);
 
-            // Vettore direzione fotocamera posteriore
-            const vx = -cA * sG - sA * sB * cG;
-            const vy = -sA * sG + cA * sB * cG;
-            let azimuth = (Math.atan2(vx, vy) * 180 / Math.PI + 360) % 360;
+            // Vettori base del corpo telefono nello spazio terrestre (Est, Nord, Alto)
+            const bx_E = [ cA*cG - sA*sB*sG,  sA*cG + cA*sB*sG, -cB*sG ];
+            const by_E = [ -sA*cB,             cA*cB,            sB     ];
+            const bz_E = [  cA*sG + sA*sB*cG,  sA*sG - cA*sB*cG,  cB*cG  ];
 
-            let pitch;
+            // Vettore fotocamera posteriore (inverso di Z corpo)
+            const F = [ -bz_E[0], -bz_E[1], -bz_E[2] ];
+
+            const screenAngle = getScreenAngle();
+            const isLandscape = window.innerWidth > window.innerHeight;
+
+            let r_body, u_body;
+
             if (screenAngle === 90) {
-                pitch = -deviceBeta;
+                r_body = [0, -1, 0]; u_body = [1, 0, 0];
             } else if (screenAngle === 270 || screenAngle === -90) {
-                pitch = deviceBeta;
-            } else if (isLandscapeViewport) {
-                pitch = (deviceGamma > 0) ? -deviceBeta : deviceBeta;
+                r_body = [0, 1, 0]; u_body = [-1, 0, 0];
+            } else if (screenAngle === 180) {
+                r_body = [-1, 0, 0]; u_body = [0, -1, 0];
             } else {
-                pitch = 90 - deviceBeta;
+                if (isLandscape) {
+                    if (deviceGamma > 0) { r_body = [0, -1, 0]; u_body = [1, 0, 0]; }
+                    else { r_body = [0, 1, 0]; u_body = [-1, 0, 0]; }
+                } else {
+                    r_body = [1, 0, 0]; u_body = [0, 1, 0];
+                }
             }
 
-            return { azimuth, pitch };
+            function multiplyR(v) {
+                return [
+                    v[0]*bx_E[0] + v[1]*by_E[0] + v[2]*bz_E[0],
+                    v[0]*bx_E[1] + v[1]*by_E[1] + v[2]*bz_E[1],
+                    v[0]*bx_E[2] + v[1]*by_E[2] + v[2]*bz_E[2]
+                ];
+            }
+
+            return { F, R: multiplyR(r_body), U: multiplyR(u_body) };
         }
 
         async function confirmCalibration() {
             try {
                 const manualAngle = parseInt(slider.value);
-                const cam = getCameraOrientation3D();
-                calibratedNorthOffset = (cam.azimuth - manualAngle + 360) % 360;
+                const screenVecs = getScreenVectors();
+                
+                // Azimuth fotocamera in tempo reale
+                const camHeading = (Math.atan2(screenVecs.F[0], screenVecs.F[1]) * 180 / Math.PI + 360) % 360;
+                calibratedNorthOffset = (camHeading - manualAngle + 360) % 360;
 
                 document.getElementById('calib-screen').classList.add('hidden');
                 document.getElementById('status-bar').classList.remove('hidden');
@@ -334,103 +354,79 @@
             loop();
         }
 
+        // Proiezione Prospettica 3D Pura
         function renderAR() {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const isLandscapeViewport = window.innerWidth > window.innerHeight;
-            const screenAngle = getScreenAngle();
-            
-            const fovH = isLandscapeViewport ? 75 : 50;
-            const fovV = isLandscapeViewport ? 45 : 65;
+            const isLandscape = window.innerWidth > window.innerHeight;
+            const screenVecs = getScreenVectors();
+            const rad = Math.PI / 180;
 
-            const cam = getCameraOrientation3D();
-            const currentHeading = (cam.azimuth - calibratedNorthOffset + 360) % 360;
-            const currentPitch = cam.pitch;
+            const fovHRad = (isLandscape ? 70 : 50) * rad;
+            const fovVRad = (isLandscape ? 45 : 65) * rad;
 
-            // Calcolo rotazione etichetta per mantenerla leggibile in orizzontale
-            let labelTextRotation = 0;
-            if (!isLandscapeViewport && Math.abs(deviceGamma) > 45) {
-                // Schermo bloccato in portrait ma telefono impugnato orizzontalmente
-                labelTextRotation = (deviceGamma > 0) ? Math.PI / 2 : -Math.PI / 2;
-            } else if (screenAngle === 90) {
-                labelTextRotation = 0;
-            } else if (screenAngle === 270 || screenAngle === -90) {
-                labelTextRotation = 0;
-            }
+            const tanH = Math.tan(fovHRad / 2);
+            const tanV = Math.tan(fovVRad / 2);
 
             visiblePeaks.forEach(peak => {
-                let diffBearing = peak.bearing - currentHeading;
-                if (diffBearing > 180) diffBearing -= 360;
-                if (diffBearing < -180) diffBearing += 360;
+                let adjBearing = (peak.bearing - calibratedNorthOffset + 360) % 360;
+                let bRad = adjBearing * rad;
+                let eRad = peak.elevationAngle * rad;
 
-                let diffPitch = peak.elevationAngle - currentPitch;
+                // Vettore cima nello spazio terrestre
+                let P_E = Math.sin(bRad) * Math.cos(eRad);
+                let P_N = Math.cos(bRad) * Math.cos(eRad);
+                let P_U = Math.sin(eRad);
 
-                if (Math.abs(diffBearing) < fovH / 2 && Math.abs(diffPitch) < fovV / 2) {
-                    let targetX = (canvas.width / 2) + (diffBearing * (canvas.width / fovH));
-                    let targetY = (canvas.height / 2) - (diffPitch * (canvas.height / fovV)) + ((peak.slot - 1) * 25);
+                // Proiezione del vettore cima sugli assi del display
+                let x_p = P_E * screenVecs.R[0] + P_N * screenVecs.R[1] + P_U * screenVecs.R[2];
+                let y_p = P_E * screenVecs.U[0] + P_N * screenVecs.U[1] + P_U * screenVecs.U[2];
+                let z_p = P_E * screenVecs.F[0] + P_N * screenVecs.F[1] + P_U * screenVecs.F[2];
 
-                    if (peak.smoothX === null) {
-                        peak.smoothX = targetX;
-                        peak.smoothY = targetY;
+                // Cima di fronte alla fotocamera
+                if (z_p > 0.05) {
+                    let targetX = (canvas.width / 2) + (x_p / z_p) * (canvas.width / (2 * tanH));
+                    let targetY = (canvas.height / 2) - (y_p / z_p) * (canvas.height / (2 * tanV)) + ((peak.slot - 1) * 25);
+
+                    if (targetX >= -100 && targetX <= canvas.width + 100 &&
+                        targetY >= -100 && targetY <= canvas.height + 100) {
+
+                        if (peak.smoothX === null) {
+                            peak.smoothX = targetX;
+                            peak.smoothY = targetY;
+                        } else {
+                            peak.smoothX += (targetX - peak.smoothX) * 0.25;
+                            peak.smoothY += (targetY - peak.smoothY) * 0.25;
+                        }
+
+                        ctx.save();
+                        ctx.translate(peak.smoothX, peak.smoothY);
+
+                        ctx.fillStyle = "#00E676";
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 5, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        ctx.fillStyle = "rgba(0,0,0,0.85)";
+                        ctx.strokeStyle = "#00E676";
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.roundRect(-60, -38, 120, 32, 6);
+                        ctx.fill();
+                        ctx.stroke();
+
+                        const safeDist = (typeof peak.dist === 'number' && !isNaN(peak.dist)) ? peak.dist.toFixed(1) : "0.0";
+
+                        ctx.fillStyle = "#FFF";
+                        ctx.font = "bold 11px system-ui";
+                        ctx.textAlign = "center";
+                        ctx.fillText(peak.name, 0, -22);
+                        ctx.fillStyle = "#00E676";
+                        ctx.font = "10px system-ui";
+                        ctx.fillText(`${peak.ele}m | ${safeDist}km`, 0, -10);
+
+                        ctx.restore();
                     } else {
-                        peak.smoothX += (targetX - peak.smoothX) * 0.25;
-                        peak.smoothY += (targetY - peak.smoothY) * 0.25;
-                    }
-
-                    ctx.save();
-                    ctx.translate(peak.smoothX, peak.smoothY);
-                    
-                    // Applica la rotazione se lo schermo è inclinato
-                    if (labelTextRotation !== 0) {
-                        ctx.rotate(labelTextRotation);
-                    }
-
-                    ctx.fillStyle = "#FF1744";
-                    ctx.beginPath();
-                    ctx.arc(0, 0, 5, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    ctx.fillStyle = "rgba(0,0,0,0.85)";
-                    ctx.strokeStyle = "#FF1744";
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.roundRect(-60, -38, 120, 32, 6);
-                    ctx.fill();
-                    ctx.stroke();
-
-                    const safeDist = (typeof peak.dist === 'number' && !isNaN(peak.dist)) ? peak.dist.toFixed(1) : "0.0";
-
-                    ctx.fillStyle = "#FFF";
-                    ctx.font = "bold 11px system-ui";
-                    ctx.textAlign = "center";
-                    ctx.fillText(peak.name, 0, -22);
-                    ctx.fillStyle = "#FF1744";
-                    ctx.font = "10px system-ui";
-                    ctx.fillText(`${peak.ele}m | ${safeDist}km`, 0, -10);
-
-                    ctx.restore();
-                } else {
-                    peak.smoothX = null;
-                    peak.smoothY = null;
-                }
-            });
-        }
-
-        function toggleFreeze() {
-            isFrozen = !isFrozen;
-            const video = document.getElementById('camera-feed');
-            const btn = document.getElementById('freeze-btn');
-            if (isFrozen) {
-                video.pause();
-                btn.innerText = "Sblocca Vista";
-            } else {
-                video.play();
-                btn.innerText = "Blocca Vista";
-            }
-        }
-    </script>
-</body>
-                                                    </html>
-    
+                        peak.
