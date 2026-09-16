@@ -3,29 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - MVP v3.17 (Verde Stabilizzato)</title>
+    <title>HUD Horizon Test - Step 1</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
-        body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: monospace, system-ui; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #00E676; }
         
         #camera-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         #ar-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
 
-        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; z-index: 10; background: rgba(0,0,0,0.85); }
-        .hidden { display: none !important; }
+        /* HUD Diagnostica */
+        .hud-overlay { position: absolute; top: 12px; left: 12px; right: 12px; background: rgba(0, 0, 0, 0.75); border: 1px solid #00E676; padding: 10px; border-radius: 8px; font-size: 11px; z-index: 5; line-height: 1.4; }
+        .hud-title { font-weight: bold; font-size: 13px; text-transform: uppercase; margin-bottom: 4px; border-bottom: 1px solid #00E676; padding-bottom: 2px; }
 
-        .calibration-box { background: rgba(20,20,20,0.95); padding: 20px; border-radius: 16px; text-align: center; margin: auto 0; border: 1px solid #333; }
-        .compass-dial { width: 160px; height: 160px; border: 4px solid #00E676; border-radius: 50%; margin: 15px auto; position: relative; display: flex; align-items: center; justify-content: center; }
-        .arrow { width: 6px; height: 70px; background: #00E676; position: absolute; transform-origin: bottom center; top: 10px; border-radius: 4px; }
-        .arrow::before { content: ''; position: absolute; top: -10px; left: -7px; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 15px solid #00E676; }
-
-        .btn { min-height: 48px; min-width: 48px; background: #00E676; color: #000; border: none; padding: 12px 20px; font-weight: bold; font-size: 15px; border-radius: 24px; cursor: pointer; margin: 4px; }
+        /* Controlli di Test */
+        .controls-bar { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 8px; z-index: 5; padding: 0 12px; }
+        .btn { min-height: 48px; min-width: 48px; background: #00E676; color: #000; border: none; padding: 10px 18px; font-weight: bold; font-size: 14px; border-radius: 24px; cursor: pointer; text-transform: uppercase; }
         .btn:active { opacity: 0.8; }
-        .btn-secondary { background: #333; color: #fff; }
-        input[type=range] { width: 100%; height: 48px; accent-color: #00E676; }
-
-        .status-bar { position: absolute; top: 15px; left: 15px; right: 15px; background: rgba(0,0,0,0.85); padding: 10px; border-radius: 8px; font-size: 12px; z-index: 5; pointer-events: none; border: 1px solid #00E676; }
-        .controls-bar { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; flex-wrap: wrap; z-index: 5; gap: 6px; padding: 0 10px; }
+        .btn-secondary { background: rgba(20, 20, 20, 0.85); color: #00E676; border: 1px solid #00E676; }
     </style>
 </head>
 <body>
@@ -33,392 +27,239 @@
     <video id="camera-feed" autoplay playsinline muted></video>
     <canvas id="ar-canvas"></canvas>
 
-    <div id="status-bar" class="status-bar hidden">
-        GPS: <span id="gps-status">In attesa...</span> | Fonte: <span id="api-status">Inizializzazione...</span> | Cime: <span id="peaks-count">0</span>
+    <!-- Telemetria Sensori in Tempo Reale -->
+    <div class="hud-overlay">
+        <div class="hud-title">TEST HUD STEP 1 - TELEMETRIA</div>
+        <div>AZIMUTH (Alpha) : <span id="val-a">0</span>°</div>
+        <div>PITCH (Beta)     : <span id="val-b">0</span>°</div>
+        <div>ROLL (Gamma)    : <span id="val-g">0</span>°</div>
+        <div>ORIENTAMENTO    : <span id="val-orient">Portrait</span> (<span id="val-angle">0</span>°)</div>
+        <div>RISOLUZIONE HUD : <span id="val-res">0x0</span></div>
     </div>
 
-    <!-- Calibrazione Nord -->
-    <div id="calib-screen" class="screen">
-        <div style="text-align: center; margin-top: 10px;">
-            <h2>Calibrazione Nord (v3.17 Verde)</h2>
-            <p style="font-size: 13px; color: #ccc; margin-top: 5px;">Orienta la freccia verso il Nord e premi il pulsante.</p>
-        </div>
-
-        <div class="calibration-box">
-            <div class="compass-dial">
-                <div id="arrow" class="arrow" style="transform: rotate(0deg);"></div>
-            </div>
-            <div style="margin: 10px 0;">
-                <input type="range" id="angle-slider" min="0" max="359" value="0">
-            </div>
-            <p>Offset Nord: <b id="angle-val">0°</b></p>
-        </div>
-
-        <button id="calib-btn" class="btn" onclick="confirmCalibration()">Conferma e Avvia App</button>
-    </div>
-
-    <!-- Controlli AR in-app -->
-    <div id="ar-controls" class="controls-bar hidden">
-        <button class="btn btn-secondary" onclick="recalibrate()">Ricalibra Nord</button>
-        <button class="btn btn-secondary" onclick="togglePitchInversion()">Inverti Verticale</button>
-        <button class="btn" id="freeze-btn" onclick="toggleFreeze()">Blocca Vista</button>
+    <div class="controls-bar">
+        <button class="btn btn-secondary" onclick="toggleInvertPitch()">Inverti Pitch</button>
+        <button class="btn btn-secondary" onclick="toggleInvertRoll()">Inverti Roll</button>
+        <button class="btn" onclick="resetCalibration()">Zero Nord</button>
     </div>
 
     <script>
-        let userLat = 44.4949, userLon = 11.3426, userAlt = 54;
-        let calibratedNorthOffset = 0;
-        
-        // Filtri passa-basso per smorzare i tremolii del giroscopio
         let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
-        let filtAlpha = null, filtBeta = null, filtGamma = null;
-        
+        let filtAlpha = 0, filtBeta = 0, filtGamma = 0;
+        let calibratedHeadingOffset = 0;
         let invertPitch = false;
-        let visiblePeaks = [];
-        let isFrozen = false;
-        let videoStream = null;
-        let animFrameId = null;
-
-        const offlineBackupPeaks = [
-            { name: "Monte Cimone", lat: 44.1938, lon: 10.6997, ele: 2165 },
-            { name: "Corno alle Scale", lat: 44.1228, lon: 10.8317, ele: 1945 },
-            { name: "Monte Cusna", lat: 44.2883, lon: 10.4014, ele: 2121 },
-            { name: "Monte Venere", lat: 44.2251, lon: 11.2721, ele: 965 },
-            { name: "Monte Adone", lat: 44.3314, lon: 11.3103, ele: 654 },
-            { name: "Monte della Formica", lat: 44.3381, lon: 11.3812, ele: 538 },
-            { name: "Monte Vigese", lat: 44.2381, lon: 11.1091, ele: 1091 },
-            { name: "Colle di San Luca", lat: 44.4792, lon: 11.3142, ele: 300 }
-        ];
+        let invertRoll = false;
 
         window.addEventListener('DOMContentLoaded', () => {
-            const slider = document.getElementById('angle-slider');
-            const arrow = document.getElementById('arrow');
-            const angleVal = document.getElementById('angle-val');
-
-            if (slider && arrow && angleVal) {
-                slider.addEventListener('input', () => {
-                    arrow.style.transform = `rotate(${slider.value}deg)`;
-                    angleVal.innerText = `${slider.value}°`;
-                });
-            }
-
-            initGPS();
+            initCamera();
             initSensors();
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
-            processOfflinePeaks(userLat, userLon);
+            startARLoop();
         });
 
-        function initGPS() {
-            if ("geolocation" in navigator) {
-                navigator.geolocation.watchPosition(
-                    pos => {
-                        userLat = pos.coords.latitude;
-                        userLon = pos.coords.longitude;
-                        userAlt = pos.coords.altitude || 0;
-                        document.getElementById('gps-status').innerText = `${userLat.toFixed(3)}, ${userLon.toFixed(3)}`;
-                        fetchPeaksFastBBox(userLat, userLon);
-                    },
-                    err => { 
-                        document.getElementById('gps-status').innerText = "Dati locali"; 
-                    },
-                    { enableHighAccuracy: true, timeout: 5000 }
-                );
+        // Avvio Fotocamera
+        async function initCamera() {
+            const video = document.getElementById('camera-feed');
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+                video.srcObject = stream;
+            } catch (e) {
+                try {
+                    const streamFallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    video.srcObject = streamFallback;
+                } catch (err) {
+                    console.warn("Fotocamera non disponibile");
+                }
             }
         }
 
+        // Ascolto Sensori Movimento
         function initSensors() {
             window.addEventListener('deviceorientation', (e) => {
-                if (isFrozen) return;
                 rawAlpha = e.alpha || 0;
                 rawBeta = e.beta || 0;
                 rawGamma = e.gamma || 0;
 
-                // Applicazione filtro Low-Pass per eliminare scatti schizofrenici
-                if (filtAlpha === null) {
-                    filtAlpha = rawAlpha;
-                    filtBeta = rawBeta;
-                    filtGamma = rawGamma;
-                } else {
-                    let diffA = rawAlpha - filtAlpha;
-                    if (diffA > 180) diffA -= 360;
-                    if (diffA < -180) diffA += 360;
-                    filtAlpha = (filtAlpha + diffA * 0.12 + 360) % 360;
+                // Filtro passa-basso (Low-Pass Filter) per azzerare i tremolii del giroscopio
+                let diffA = rawAlpha - filtAlpha;
+                if (diffA > 180) diffA -= 360;
+                if (diffA < -180) diffA += 360;
+                filtAlpha = (filtAlpha + diffA * 0.15 + 360) % 360;
 
-                    filtBeta += (rawBeta - filtBeta) * 0.12;
-                    filtGamma += (rawGamma - filtGamma) * 0.12;
-                }
+                filtBeta += (rawBeta - filtBeta) * 0.15;
+                filtGamma += (rawGamma - filtGamma) * 0.15;
+
+                updateHUDTelemetry();
             });
         }
 
-        function confirmCalibration() {
-            const slider = document.getElementById('angle-slider');
-            const manualAngle = slider ? (parseInt(slider.value) || 0) : 0;
+        function getScreenAngle() {
+            return (screen.orientation && typeof screen.orientation.angle === 'number') 
+                ? screen.orientation.angle 
+                : (window.orientation || 0);
+        }
+
+        function updateHUDTelemetry() {
+            document.getElementById('val-a').innerText = Math.round(filtAlpha);
+            document.getElementById('val-b').innerText = Math.round(filtBeta);
+            document.getElementById('val-g').innerText = Math.round(filtGamma);
             
-            const currentA = filtAlpha !== null ? filtAlpha : rawAlpha;
-            calibratedNorthOffset = (currentA - manualAngle + 360) % 360;
-
-            document.getElementById('calib-screen').classList.add('hidden');
-            document.getElementById('status-bar').classList.remove('hidden');
-            document.getElementById('ar-controls').classList.remove('hidden');
-
-            startCamera();
-            startARLoop();
-        }
-
-        function recalibrate() {
-            if (animFrameId) cancelAnimationFrame(animFrameId);
-            visiblePeaks.forEach(p => { p.smoothX = null; p.smoothY = null; });
-
-            document.getElementById('calib-screen').classList.remove('hidden');
-            document.getElementById('status-bar').classList.add('hidden');
-            document.getElementById('ar-controls').classList.add('hidden');
-        }
-
-        function togglePitchInversion() {
-            invertPitch = !invertPitch;
-            visiblePeaks.forEach(p => { p.smoothX = null; p.smoothY = null; });
-        }
-
-        function startCamera() {
-            const video = document.getElementById('camera-feed');
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
-                .then(stream => {
-                    videoStream = stream;
-                    video.srcObject = stream;
-                    video.play().catch(e => console.warn(e));
-                    resizeCanvas();
-                })
-                .catch(err => {
-                    navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-                        .then(stream => {
-                            videoStream = stream;
-                            video.srcObject = stream;
-                            video.play().catch(e => console.warn(e));
-                            resizeCanvas();
-                        })
-                        .catch(e => console.warn("Fotocamera non disponibile"));
-                });
+            const screenAngle = getScreenAngle();
+            const isLandscape = window.innerWidth > window.innerHeight;
+            document.getElementById('val-orient').innerText = isLandscape ? "Landscape" : "Portrait";
+            document.getElementById('val-angle').innerText = screenAngle;
         }
 
         function resizeCanvas() {
             const canvas = document.getElementById('ar-canvas');
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            document.getElementById('val-res').innerText = `${canvas.width}x${canvas.height}`;
         }
 
-        async function fetchPeaksFastBBox(lat, lon) {
-            const statusEl = document.getElementById('api-status');
-            const minLat = (lat - 0.18).toFixed(4);
-            const maxLat = (lat + 0.18).toFixed(4);
-            const minLon = (lon - 0.25).toFixed(4);
-            const maxLon = (lon + 0.25).toFixed(4);
+        function toggleInvertPitch() { invertPitch = !invertPitch; }
+        function toggleInvertRoll() { invertRoll = !invertRoll; }
+        function resetCalibration() { calibratedHeadingOffset = filtAlpha; }
 
-            const query = `[out:json][timeout:5];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body;`;
-            const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
-
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 3000);
-                const res = await fetch(url, { signal: controller.signal });
-                clearTimeout(timeoutId);
-
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data && data.elements && data.elements.length > 0) {
-                        statusEl.innerText = "Online";
-                        processPeaksData(data.elements, lat, lon);
-                        return;
-                    }
-                }
-            } catch (e) { }
-
-            statusEl.innerText = "Dati locali";
-            processOfflinePeaks(lat, lon);
-        }
-
-        function processPeaksData(elements, lat, lon) {
-            let raw = elements.map(el => {
-                if (!el || !el.tags) return null;
-                const name = el.tags.name || el.tags['name:it'] || el.tags.official_name;
-                if (!name || !el.tags.ele) return null;
-
-                const ele = parseFloat(el.tags.ele);
-                if (isNaN(ele)) return null;
-
-                const distKm = calculateDistance(lat, lon, el.lat, el.lon);
-                const bearing = calculateBearing(lat, lon, el.lat, el.lon);
-                
-                const eleDiffMeters = ele - userAlt;
-                const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * 180 / Math.PI;
-                const prominenceScore = ele / Math.sqrt(distKm);
-
-                return { name, ele, dist: distKm, bearing, elevationAngle, prominenceScore, smoothX: null, smoothY: null };
-            }).filter(p => p !== null);
-
-            finalizePeakList(raw);
-        }
-
-        function processOfflinePeaks(lat, lon) {
-            let raw = offlineBackupPeaks.map(p => {
-                const distKm = calculateDistance(lat, lon, p.lat, p.lon);
-                const bearing = calculateBearing(lat, lon, p.lat, p.lon);
-                const eleDiffMeters = p.ele - userAlt;
-                const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * 180 / Math.PI;
-                const prominenceScore = p.ele / Math.sqrt(distKm);
-
-                return { name: p.name, ele: p.ele, dist: distKm, bearing, elevationAngle, prominenceScore, smoothX: null, smoothY: null };
-            });
-
-            finalizePeakList(raw);
-        }
-
-        function finalizePeakList(raw) {
-            if (raw.length === 0) return;
-
-            raw.sort((a, b) => b.prominenceScore - a.prominenceScore);
-            let topPeaks = raw.slice(0, 12);
-
-            topPeaks.sort((a, b) => a.dist - b.dist);
-            topPeaks.forEach((p, idx) => { p.slot = idx % 3; });
-
-            visiblePeaks = topPeaks;
-            document.getElementById('peaks-count').innerText = visiblePeaks.length;
-        }
-
-        function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371;
-            const dLat = (lat2 - lat1) * Math.PI / 180;
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                      Math.sin(dLon/2) * Math.sin(dLon/2);
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        }
-
-        function calculateBearing(lat1, lon1, lat2, lon2) {
-            const dLon = (lon2 - lon1) * Math.PI / 180;
-            const y = Math.sin(dLon) * Math.cos(lat2 * Math.PI / 180);
-            const x = Math.cos(lat1 * Math.PI / 180) * Math.sin(lat2 * Math.PI / 180) -
-                      Math.sin(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.cos(dLon);
-            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-        }
-
+        // Ciclo di Render Grafico a 60 FPS
         function startARLoop() {
-            if (animFrameId) cancelAnimationFrame(animFrameId);
             function loop() {
-                if (!isFrozen && document.getElementById('calib-screen').classList.contains('hidden')) {
-                    renderAR();
-                }
-                animFrameId = requestAnimationFrame(loop);
+                renderHUD();
+                requestAnimationFrame(loop);
             }
             loop();
         }
 
-        function renderAR() {
+        function renderHUD() {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const isLandscape = window.innerWidth > window.innerHeight;
-            
-            const currA = filtAlpha !== null ? filtAlpha : rawAlpha;
-            const currB = filtBeta !== null ? filtBeta : rawBeta;
-            const currG = filtGamma !== null ? filtGamma : rawGamma;
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const isLandscape = w > h;
 
-            // Azimuth bussola
-            let currentHeading = (currA - calibratedNorthOffset + 360) % 360;
-            
-            // Calcolo Pitch (Inclinazione Cima/Orizzonte)
-            let currentPitch = 0;
+            // 1. Calcolo Inclinazione e Rollio in base all'orientamento dello schermo
+            let pitch = 0;
+            let roll = 0;
+
             if (!isLandscape) {
-                // In Portrait: beta 90° = Orizzonte
-                currentPitch = currB - 90;
+                // Portrait: beta = inclinazione verticale, gamma = rollio laterale
+                pitch = filtBeta - 90;
+                roll = filtGamma;
             } else {
-                // In Landscape: gamma 90° o -90° = Orizzonte
-                let absG = Math.abs(currG);
-                currentPitch = 90 - absG;
-                if (currB < 0) currentPitch = -currentPitch;
+                // Landscape: gamma gestisce la pendenza verticale, beta il rollio
+                const scrAngle = getScreenAngle();
+                if (scrAngle === 90) {
+                    pitch = -filtGamma;
+                    roll = filtBeta;
+                } else if (scrAngle === 270 || scrAngle === -90) {
+                    pitch = filtGamma;
+                    roll = -filtBeta;
+                } else {
+                    pitch = (filtGamma > 0) ? -filtBeta : filtBeta;
+                    roll = filtGamma;
+                }
             }
 
-            if (invertPitch) {
-                currentPitch = -currentPitch;
+            if (invertPitch) pitch = -pitch;
+            if (invertRoll) roll = -roll;
+
+            const pxPerDegree = isLandscape ? h / 50 : h / 60; // Scala gradi/pixel
+
+            // -------------------------------------------------------------
+            // 2. DISGNO ORIZZONTE ARTIFICIALE (Linea che ruota e trasla)
+            // -------------------------------------------------------------
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate((roll * Math.PI) / 180); // Ruota la vista in base al rollio
+
+            const horizonY = pitch * pxPerDegree; // Sposta verticalmente in base al pitch
+
+            // Linea Orizzonte Principale
+            ctx.strokeStyle = "#00E676";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-w, horizonY);
+            ctx.lineTo(w, horizonY);
+            ctx.stroke();
+
+            // Mirino Centrale Fisso dello Schermo
+            ctx.strokeStyle = "#FFF";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(0, 0, 10, 0, Math.PI * 2);
+            ctx.moveTo(-20, 0); ctx.lineTo(-10, 0);
+            ctx.moveTo(10, 0); ctx.lineTo(20, 0);
+            ctx.moveTo(0, -20); ctx.lineTo(0, -10);
+            ctx.moveTo(0, 10); ctx.lineTo(0, 20);
+            ctx.stroke();
+
+            // Tacche di Pitch (+10°, +20°, -10°, -20°)
+            for (let deg = -40; deg <= 40; deg += 10) {
+                if (deg === 0) continue;
+                let y = horizonY - (deg * pxPerDegree);
+                let lineW = (deg % 20 === 0) ? 60 : 30;
+                
+                ctx.strokeStyle = "rgba(0, 230, 118, 0.6)";
+                ctx.beginPath();
+                ctx.moveTo(-lineW / 2, y);
+                ctx.lineTo(lineW / 2, y);
+                ctx.stroke();
+
+                ctx.fillStyle = "rgba(0, 230, 118, 0.8)";
+                ctx.font = "10px monospace";
+                ctx.fillText(`${deg}°`, lineW / 2 + 5, y + 3);
             }
+            ctx.restore();
+
+            // -------------------------------------------------------------
+            // 3. DISEGNO PASSA-BUSSOLA PUNTI CARDINALI (Assi Nord, Est, Sud, Ovest)
+            // -------------------------------------------------------------
+            const currentHeading = (filtAlpha - calibratedNorthOffset + 360) % 360;
+            const cardinalPoints = [
+                { name: "NORD (0°)",   deg: 0 },
+                { name: "EST (90°)",   deg: 90 },
+                { name: "SUD (180°)",  deg: 180 },
+                { name: "OVEST (270°)", deg: 270 }
+            ];
 
             const fovH = isLandscape ? 70 : 50;
-            const fovV = isLandscape ? 45 : 65;
 
-            visiblePeaks.forEach(peak => {
-                let diffH = peak.bearing - currentHeading;
+            cardinalPoints.forEach(pt => {
+                let diffH = pt.deg - currentHeading;
                 if (diffH > 180) diffH -= 360;
                 if (diffH < -180) diffH += 360;
 
-                let diffV = peak.elevationAngle - currentPitch;
+                // Se il punto cardinale rientra nell'inquadratura
+                if (Math.abs(diffH) < fovH / 2) {
+                    let posX = cx + (diffH * (w / fovH));
 
-                if (Math.abs(diffH) < fovH / 2 && Math.abs(diffV) < fovV / 2) {
-                    let targetX = (canvas.width / 2) + (diffH * (canvas.width / fovH));
-                    
-                    // Puntando in alto, l'orizzonte (e le etichette) deve scendere verso il basso a schermo
-                    let targetY = (canvas.height / 2) - (diffV * (canvas.height / fovV)) + ((peak.slot - 1) * 26);
-
-                    // Smoothing LERP a 0.1 per movimento morbido senza scatti
-                    if (peak.smoothX === null) {
-                        peak.smoothX = targetX;
-                        peak.smoothY = targetY;
-                    } else {
-                        peak.smoothX += (targetX - peak.smoothX) * 0.1;
-                        peak.smoothY += (targetY - peak.smoothY) * 0.1;
-                    }
-
-                    ctx.save();
-                    ctx.translate(peak.smoothX, peak.smoothY);
-
-                    // Indicatore Cima
-                    ctx.fillStyle = "#00E676";
+                    // Asse verticale del punto cardinale
+                    ctx.strokeStyle = "rgba(0, 230, 118, 0.8)";
+                    ctx.setLineDash([6, 6]);
+                    ctx.lineWidth = 1.5;
                     ctx.beginPath();
-                    ctx.arc(0, 0, 5, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    // Box Etichetta
-                    ctx.fillStyle = "rgba(0,0,0,0.85)";
-                    ctx.strokeStyle = "#00E676";
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.rect(-60, -38, 120, 32);
-                    ctx.fill();
+                    ctx.moveTo(posX, 80);
+                    ctx.lineTo(posX, h - 80);
                     ctx.stroke();
+                    ctx.setLineDash([]);
 
-                    const safeDist = (typeof peak.dist === 'number' && !isNaN(peak.dist)) ? peak.dist.toFixed(1) : "0.0";
+                    // Etichetta del Punto Cardinale
+                    ctx.fillStyle = "#000";
+                    ctx.fillRect(posX - 45, 85, 90, 22);
+                    ctx.strokeStyle = "#00E676";
+                    ctx.strokeRect(posX - 45, 85, 90, 22);
 
-                    // Testi
-                    ctx.fillStyle = "#FFF";
-                    ctx.font = "bold 11px system-ui, sans-serif";
-                    ctx.textAlign = "center";
-                    ctx.fillText(peak.name, 0, -22);
                     ctx.fillStyle = "#00E676";
-                    ctx.font = "10px system-ui, sans-serif";
-                    ctx.fillText(`${peak.ele}m | ${safeDist}km`, 0, -10);
-
-                    ctx.restore();
-                } else {
-                    peak.smoothX = null;
-                    peak.smoothY = null;
+                    ctx.font = "bold 11px monospace";
+                    ctx.textAlign = "center";
+                    ctx.fillText(pt.name, posX, 100);
                 }
             });
-        }
-
-        function toggleFreeze() {
-            isFrozen = !isFrozen;
-            const video = document.getElementById('camera-feed');
-            const btn = document.getElementById('freeze-btn');
-            if (isFrozen) {
-                video.pause();
-                btn.innerText = "Sblocca Vista";
-            } else {
-                video.play();
-                btn.innerText = "Blocca Vista";
-            }
         }
     </script>
 </body>
