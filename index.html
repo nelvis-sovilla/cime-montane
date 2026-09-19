@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Fast Radial Fetch</title>
+    <title>PeakFinder AR - Raggio 15km</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -109,8 +109,8 @@
     <!-- FASE 1: CALIBRAZIONE TAP NORD -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>PEAKFINDER AR - RICERCA RADIALE</h1>
-            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per scaricare le cime circostanti.</p>
+            <h1>PEAKFINDER AR - 15 KM LIVE</h1>
+            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per scaricare le cime con nome e quota.</p>
         </div>
 
         <div class="calib-body">
@@ -132,18 +132,18 @@
         <div class="hud-title">PEAKFINDER AR - FILTRO LIVE</div>
         <div>GPS: <span id="v-gps" class="val">In attesa...</span></div>
         <div>Cime Visibili: <span id="v-peaks" class="val">0</span> (<span id="v-total" class="val">0</span> tot)</div>
-        <div>Banda: <span id="v-band" class="val">0 - 15 km</span></div>
+        <div>Banda: <span id="v-band" class="val">0 - 11 km</span></div>
         <div>Stato: <span id="v-source" class="val">In attesa...</span> <button id="retry-btn" class="btn-retry hidden" onclick="manualRetryFetch()">Riprova</button></div>
     </div>
 
     <!-- Controlli AR con Slider Profondità / Buffer -->
     <div id="ar-controls" class="controls-bar hidden">
         <div class="slider-box">
-            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">10 km</b></div>
+            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">8 km</b></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
-                Visibili tra <span id="dist-min" style="color:#fff;">5</span> e <span id="dist-max" style="color:#fff;">15</span> km (Buffer ±5 km)
+                Visibili tra <span id="dist-min" style="color:#fff;">5</span> e <span id="dist-max" style="color:#fff;">11</span> km (Buffer ±3 km)
             </div>
-            <input type="range" id="depth-slider" min="5" max="30" step="1" value="10">
+            <input type="range" id="depth-slider" min="3" max="15" step="1" value="8">
         </div>
         <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
     </div>
@@ -152,8 +152,8 @@
         const RAD = Math.PI / 180;
         const DEG = 180 / Math.PI;
 
-        const BUFFER_DELTA_KM = 5;
-        const FETCH_RADIAL_METERS = 25000; // 25 km di raggio circolare reale dal punto GPS
+        const BUFFER_DELTA_KM = 3; // Buffer ristretto per distanze ravvicinate
+        const FETCH_RADIAL_METERS = 15000; // Raggio max ridotto a 15 km reali dal punto GPS
 
         // Sensori & Assetto
         let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
@@ -164,7 +164,7 @@
 
         // GPS e Dati Cime
         let userLat = null, userLon = null, userAlt = 0;
-        let targetDistanceKm = 10;
+        let targetDistanceKm = 8;
         
         let allDownloadedPeaks = [];
         let activePeaks = [];
@@ -238,7 +238,7 @@
         function shouldRefetchRadial(lat, lon) {
             if (lastQueryLat === null || lastQueryLon === null) return true;
             const distMoved = calculateDistance(lastQueryLat, lastQueryLon, lat, lon);
-            return distMoved > 1.0;
+            return distMoved > 0.8;
         }
 
         function manualRetryFetch() {
@@ -247,7 +247,7 @@
             }
         }
 
-        // QUERY ULTRA-VELOCE RADIALE "around" + NO-FAILOVER VELOCE
+        // QUERY ULTRA-LEGGERA: 15 KM CON NOME ED ELEVAZIONE OBBLIGATORI
         async function fetchPeaksRadial(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
@@ -259,8 +259,8 @@
             lastQueryLat = lat;
             lastQueryLon = lon;
 
-            // Query radiale ultraleggera: cime con nome e quota entro 25km
-            const query = `[out:json][timeout:6];node["natural"="peak"]["name"]["ele"](around:${FETCH_RADIAL_METERS},${lat},${lon});out body 200;`;
+            // Filtro rigoroso: solo cime con nome E quota entro 15km
+            const query = `[out:json][timeout:6];node["natural"="peak"]["name"]["ele"](around:${FETCH_RADIAL_METERS},${lat},${lon});out body;`;
 
             for (let i = 0; i < overpassServers.length; i++) {
                 const serverUrl = `${overpassServers[i]}?data=${encodeURIComponent(query)}`;
@@ -268,7 +268,7 @@
 
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 4000); // Max 4s per server
+                    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
                     const res = await fetch(serverUrl, { signal: controller.signal });
                     clearTimeout(timeoutId);
@@ -280,7 +280,7 @@
                                 statusSource.innerText = `OK (Srv ${i + 1})`;
                                 processRadialPeaksData(data.elements, lat, lon);
                             } else {
-                                statusSource.innerText = "Nessuna cima nel raggio";
+                                statusSource.innerText = "Nessuna cima entro 15km";
                                 allDownloadedPeaks = [];
                                 activePeaks = [];
                                 document.getElementById('v-peaks').innerText = "0";
@@ -525,7 +525,7 @@
                 }
             });
 
-            // 3. RENDERING ETICHETTE CIME REALI
+            // 3. RENDERING ETICHETTE CIME REALI (FILTRATE DAL BUFFER D'AMPIEZZA)
             activePeaks.forEach(peak => {
                 let diffH = peak.bearing - finalHeading;
                 if (diffH > 180) diffH -= 360;
@@ -543,11 +543,13 @@
                         peak.smoothY += (targetY - peak.smoothY) * 0.15;
                     }
 
+                    // Pallino sulla cima
                     ctx.fillStyle = "#ef4444";
                     ctx.beginPath();
                     ctx.arc(peak.smoothX, peak.smoothY, 5, 0, Math.PI * 2);
                     ctx.fill();
 
+                    // Linea verticale dall'orizzonte
                     ctx.strokeStyle = "rgba(239, 68, 68, 0.6)";
                     ctx.lineWidth = 1;
                     ctx.beginPath();
@@ -555,6 +557,7 @@
                     ctx.lineTo(peak.smoothX, peak.smoothY);
                     ctx.stroke();
 
+                    // Box Etichetta
                     ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
                     ctx.strokeStyle = "#ef4444";
                     ctx.lineWidth = 1.5;
@@ -567,6 +570,7 @@
                     ctx.fillRect(boxX, boxY, boxW, boxH);
                     ctx.strokeRect(boxX, boxY, boxW, boxH);
 
+                    // Testi Etichetta
                     ctx.fillStyle = "#ffffff";
                     ctx.font = "bold 11px system-ui, sans-serif";
                     ctx.textAlign = "center";
@@ -584,6 +588,7 @@
 
             ctx.restore();
 
+            // MIRINO CENTRALE FISSO
             ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = 2;
             ctx.beginPath();
