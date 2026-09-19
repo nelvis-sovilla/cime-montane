@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>HUD Fotocamera - Motore 3D Stabile</title>
+    <title>HUD Fotocamera - Vettore Gravità Stabile</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: monospace, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #06b6d4; }
@@ -28,14 +28,14 @@
     <canvas id="ar-canvas"></canvas>
 
     <div class="hud-overlay">
-        <div class="hud-title">MOTORE 3D STABILE (FOTOCAMERA)</div>
-        <div>Heading (Bussola): <span id="v-head" class="val">0</span>°</div>
-        <div>Pitch (Inclinazione): <span id="v-pitch" class="val">0</span>°</div>
-        <div>Roll (Rollio)      : <span id="v-roll" class="val">0</span>°</div>
+        <div class="hud-title">MOTORE GRAVITAZIONALE PRO</div>
+        <div>Heading (Bussola) : <span id="v-head" class="val">0</span>°</div>
+        <div>Pitch (Orizzonte): <span id="v-pitch" class="val">0</span>°</div>
+        <div>Roll (Inclinazione): <span id="v-roll" class="val">0</span>°</div>
     </div>
 
     <div class="controls-bar">
-        <button class="btn" onclick="calibratedOffset = currentHeading">Zero Nord</button>
+        <button class="btn" onclick="calibratedOffset = currentHeading">Calibra Nord</button>
     </div>
 
     <script>
@@ -85,8 +85,8 @@
             });
         }
 
-        // MOTORE VETTORIALE 3D ESENTE DA GIMBAL LOCK
-        function calculateOrientation3D(alpha, beta, gamma) {
+        // CALCOLO BASATO SUL VETTORE GRAVITAZIONALE CONTINUO (SENZA GIMBAL LOCK)
+        function getGravityAttitude(alpha, beta, gamma) {
             const a = alpha * RAD;
             const b = beta * RAD;
             const g = gamma * RAD;
@@ -95,21 +95,38 @@
             const cB = Math.cos(b), sB = Math.sin(b);
             const cG = Math.cos(g), sG = Math.sin(g);
 
-            // Vettore direzione della fotocamera posteriore nello spazio terrestre (Est, Nord, Alto)
+            // Componenti del Vettore Gravità (G) proiettate sullo schermo del dispositivo
+            const Gx = sG * cB;      // Spinta laterale (sinistra/destra)
+            const Gy = -sB;          // Spinta verticale (alto/basso)
+            const Gz = -cG * cB;     // Spinta perpendicolare allo schermo
+
+            // 1. PITCH (Elevazione della fotocamera rispetto all'orizzonte)
+            // Quando la fotocamera punta l'orizzonte (telefono verticale), Gz = 0 -> pitch = 0°
+            const camUp = -Gz; 
+            const pitch = Math.asin(Math.max(-1, Math.min(1, camUp))) * DEG;
+
+            // 2. ROLL (Inclinazione laterale dello schermo rispetto alla gravità)
+            // Uso atan2(Gx, -Gy) che rimane totalmente stabile a 90°
+            const isLandscape = window.innerWidth > window.innerHeight;
+            let roll = 0;
+
+            if (!isLandscape) {
+                roll = Math.atan2(Gx, -Gy) * DEG;
+            } else {
+                const scrAngle = (screen.orientation && screen.orientation.angle !== undefined) 
+                    ? screen.orientation.angle : (window.orientation || 0);
+                if (scrAngle === 90) {
+                    roll = Math.atan2(-Gy, Gx) * DEG;
+                } else {
+                    roll = Math.atan2(Gy, -Gx) * DEG;
+                }
+            }
+
+            // 3. HEADING (Bussola orizzontale 3D)
             const camE = -(cA * sG + sA * sB * cG);
             const camN = -(sA * sG - cA * sB * cG);
-            const camU = -(cB * cG);
-
-            // Heading (Bussola orizzontale reale)
             let heading = Math.atan2(camE, camN) * DEG;
             if (heading < 0) heading += 360;
-
-            // Pitch (Elevazione fotocamera rispetto all'orizzonte: da -90° guarda giù a +90° guarda il cielo)
-            const pitch = Math.asin(Math.max(-1, Math.min(1, camU))) * DEG;
-
-            // Roll (Inclinazione laterale dello schermo)
-            const isLandscape = window.innerWidth > window.innerHeight;
-            let roll = isLandscape ? beta : gamma;
 
             return { heading, pitch, roll };
         }
@@ -125,18 +142,23 @@
             const cy = h / 2;
             const isLandscape = w > h;
 
-            // Calcolo orientamento 3D
-            const orientation = calculateOrientation3D(rawAlpha, rawBeta, rawGamma);
-            currentHeading = orientation.heading;
+            // Calcolo atteggiamento spaziale
+            const attitude = getGravityAttitude(rawAlpha, rawBeta, rawGamma);
+            currentHeading = attitude.heading;
 
-            // Smorzamento (Smoothing LERP a 0.15)
+            // Smorzamento LERP (0.12) per fluidità visiva
             let diffH = currentHeading - sHeading;
             if (diffH > 180) diffH -= 360;
             if (diffH < -180) diffH += 360;
-            sHeading = (sHeading + diffH * 0.15 + 360) % 360;
+            sHeading = (sHeading + diffH * 0.12 + 360) % 360;
 
-            sPitch += (orientation.pitch - sPitch) * 0.15;
-            sRoll += (orientation.roll - sRoll) * 0.15;
+            sPitch += (attitude.pitch - sPitch) * 0.12;
+            
+            // Smorzamento continuo del rollio (evita salti attorno a ±180)
+            let diffR = attitude.roll - sRoll;
+            if (diffR > 180) diffR -= 360;
+            if (diffR < -180) diffR += 360;
+            sRoll = sRoll + diffR * 0.12;
 
             // Telemetria
             document.getElementById('v-head').innerText = sHeading.toFixed(1);
@@ -147,14 +169,14 @@
             const fovV = isLandscape ? 45 : 65; 
             const pxPerDegree = h / fovV;
             
-            // Quando pitch > 0 (fotocamera guarda in alto), la linea dell'orizzonte deve scendere
+            // Quando pitch = 0 (telefono verticale di fronte all'orizzonte), horizonY = 0 (centro esatto dello schermo)
             const horizonY = sPitch * pxPerDegree;
 
             ctx.save();
             ctx.translate(cx, cy);
-            ctx.rotate(-sRoll * RAD); // Ruota in senso opposto per mantenere la linea parallela alla Terra
+            ctx.rotate(-sRoll * RAD); // Ruota in opposizione al rollio per mantenere l'orizzonte vero
 
-            // Linea dell'Orizzonte Azzurra
+            // Linea dell'Orizzonte
             ctx.strokeStyle = "#06b6d4";
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -162,7 +184,7 @@
             ctx.lineTo(w, horizonY);
             ctx.stroke();
 
-            // Tacche di inclinazione
+            // Tacche d'inclinazione (+/- 10, 20, 30 gradi)
             ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
             ctx.fillStyle = "#06b6d4";
             ctx.font = "11px monospace";
@@ -177,7 +199,7 @@
             }
             ctx.restore();
 
-            // Mirino centrale fisso (Rosso)
+            // Mirino centrale fisso dello schermo (Rosso)
             ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = 2;
             ctx.beginPath();
