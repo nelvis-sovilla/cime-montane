@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>HUD Fotocamera - Calibrazione Separata</title>
+    <title>HUD AR - Calibrazione Tap Nord</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -14,50 +14,56 @@
         .hidden { display: none !important; }
 
         /* ==========================================================================
-           FASE 1: SCHERMATA DEDICATA CALIBRAZIONE (NO FOTOCAMERA)
+           FASE 1: SCHERMATA DEDICATA CALIBRAZIONE TAP
            ========================================================================== */
         .calib-container { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             display: flex; flex-direction: column; justify-content: space-between; 
-            padding: 24px 20px; z-index: 20; background: #0b0f19; 
+            padding: 30px 20px; z-index: 20; background: #0b0f19; 
+            cursor: pointer; text-align: center;
         }
 
-        .calib-header { text-align: center; margin-top: 10px; }
-        .calib-header h1 { color: #f8fafc; font-size: 20px; font-weight: 700; letter-spacing: 1px; }
-        .calib-header p { color: #94a3b8; font-size: 13px; margin-top: 8px; line-height: 1.4; }
+        .calib-header { margin-top: 20px; }
+        .calib-header h1 { color: #f8fafc; font-size: 22px; font-weight: 700; letter-spacing: 1px; }
+        .calib-header p { color: #94a3b8; font-size: 14px; margin-top: 10px; line-height: 1.5; }
 
         .calib-body { 
             display: flex; flex-direction: column; align-items: center; justify-content: center; 
             margin: auto 0; width: 100%; 
         }
 
-        .compass-box {
-            width: 220px; height: 220px; border: 3px solid #06b6d4; border-radius: 50%;
+        /* Freccia Fissa verso l'alto */
+        .fixed-arrow-box {
+            width: 180px; height: 180px; border: 3px dashed #06b6d4; border-radius: 50%;
             position: relative; display: flex; align-items: center; justify-content: center;
-            background: #0f172a; box-shadow: 0 0 30px rgba(6, 182, 212, 0.15);
-            margin-bottom: 25px;
+            background: #0f172a; box-shadow: 0 0 40px rgba(6, 182, 212, 0.15);
+            margin-bottom: 20px;
         }
 
-        .needle {
-            width: 8px; height: 90px; background: #ef4444; position: absolute;
-            transform-origin: bottom center; top: 20px; border-radius: 4px;
-            transition: transform 0.05s ease-out;
+        .fixed-needle {
+            width: 10px; height: 100px; background: #ef4444; position: absolute;
+            top: 20px; border-radius: 5px;
         }
-        .needle::before {
-            content: ''; position: absolute; top: -12px; left: -8px;
-            border-left: 12px solid transparent; border-right: 12px solid transparent;
-            border-bottom: 18px solid #ef4444;
-        }
-
-        .slider-card {
-            width: 100%; max-width: 320px; background: #0f172a; border: 1px solid #1e293b;
-            padding: 16px; border-radius: 16px; text-align: center;
+        .fixed-needle::before {
+            content: ''; position: absolute; top: -14px; left: -10px;
+            border-left: 15px solid transparent; border-right: 15px solid transparent;
+            border-bottom: 22px solid #ef4444;
         }
 
-        input[type=range] { width: 100%; height: 36px; accent-color: #06b6d4; margin-top: 8px; }
+        .tap-hint {
+            font-size: 13px; color: #06b6d4; letter-spacing: 1px;
+            font-weight: bold; text-transform: uppercase;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
 
         /* ==========================================================================
-           FASE 2: ELEMENTI HUD VISTA AR (ATTIVI DOPO CONFERMA)
+           FASE 2: HUD VISTA AR (ATTIVI DOPO TAP)
            ========================================================================== */
         .hud-overlay { 
             position: absolute; top: 15px; left: 15px; 
@@ -76,11 +82,10 @@
         /* BUTTONS */
         .btn-primary { 
             width: 100%; max-width: 340px; background: #06b6d4; color: #0b0f19; 
-            border: none; padding: 16px; font-weight: 700; font-size: 14px; 
+            border: none; padding: 18px; font-weight: 700; font-size: 14px; 
             border-radius: 30px; cursor: pointer; text-transform: uppercase; 
             letter-spacing: 0.5px; margin: 0 auto; box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
         }
-        .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
 
         .btn-secondary { 
             background: rgba(15, 23, 42, 0.85); color: #06b6d4; border: 1px solid #06b6d4; 
@@ -91,28 +96,21 @@
 </head>
 <body>
 
-    <!-- FASE 1: SCHERMATA DEDICATA DI CALIBRAZIONE NORD -->
-    <div id="calib-screen" class="calib-container">
+    <!-- FASE 1: CALIBRAZIONE TAP NORD -->
+    <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>CALIBRAZIONE NORD</h1>
-            <p>Punta il telefono verso il Nord Reale.<br>Ruota lo smartphone o usa lo slider per allineare la freccia.</p>
+            <h1>CALIBRAZIONE IMPOSTATA</h1>
+            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca in qualsiasi punto dello schermo per calibrare.</p>
         </div>
 
         <div class="calib-body">
-            <div class="compass-box">
-                <div id="needle" class="needle" style="transform: rotate(0deg);"></div>
+            <div class="fixed-arrow-box">
+                <div class="fixed-needle"></div>
             </div>
-
-            <div class="slider-card">
-                <span style="font-size: 12px; color: #94a3b8;">Correzione Manuale Offset:</span>
-                <input type="range" id="angle-slider" min="0" max="359" value="0">
-                <div style="margin-top: 6px; font-size: 14px; color: #f8fafc;">
-                    Offset: <b id="angle-val" style="color: #06b6d4;">0°</b>
-                </div>
-            </div>
+            <div class="tap-hint">▲ TAP SULLO SCHERMO PER COMPLETARE ▲</div>
         </div>
 
-        <button class="btn-primary" onclick="confirmAndStartAR()">CONFERMA NORD E AVVIA FOTOCAMERA</button>
+        <button class="btn-primary" onclick="event.stopPropagation(); calibrateAndStartAR();">TOCCA PER IMPORRE NORD E AVVIARE</button>
     </div>
 
     <!-- FASE 2: FOTOCAMERA E CANVAS AR (INIZIALMENTE NASCOSTI) -->
@@ -122,8 +120,8 @@
     <!-- Telemetria AR -->
     <div id="hud-telemetry" class="hud-overlay hidden">
         <div class="hud-title">HUD STEP 1 - VISTA AR</div>
-        <div>Heading: <span id="v-head" class="val">0</span>° | Offset: <span id="v-offset" class="val">0</span>°</div>
-        <div>Pitch  : <span id="v-pitch" class="val">0</span>° | Roll  : <span id="v-roll" class="val">0</span>°</div>
+        <div>Heading: <span id="v-head" class="val">0</span>° | Offset Nord: <span id="v-offset" class="val">0</span>°</div>
+        <div>Pitch  : <span id="v-pitch" class="val">0</span>° | Roll       : <span id="v-roll" class="val">0</span>°</div>
     </div>
 
     <!-- Controlli AR -->
@@ -139,34 +137,21 @@
         let sHeading = 0, sPitch = 0, sRoll = 0;
         let currentHeading = 0;
         let calibratedOffset = 0;
-        let manualSliderOffset = 0;
         let isARActive = false;
 
         window.addEventListener('DOMContentLoaded', () => {
             initSensors();
-            setupSlider();
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
             requestAnimationFrame(renderLoop);
         });
 
-        // 1. SETUP SLIDER
-        function setupSlider() {
-            const slider = document.getElementById('angle-slider');
-            const angleVal = document.getElementById('angle-val');
+        // CALIBRAZIONE AL TAP: IMPOSTA L'ORIENTAMENTO ATTUALE COME NORD (0°)
+        async function calibrateAndStartAR() {
+            // L'angolo attualmente misurato dalla bussola diventa l'offset di calibrazione (Nord)
+            calibratedOffset = currentHeading;
 
-            slider.addEventListener('input', () => {
-                manualSliderOffset = parseInt(slider.value) || 0;
-                angleVal.innerText = `${manualSliderOffset}°`;
-            });
-        }
-
-        // 2. AVVIO FASE 2: ATTIVAZIONE FOTOCAMERA E INTERFACCIA AR
-        async function confirmAndStartAR() {
-            // Calcola l'offset di calibrazione definitivo
-            calibratedOffset = (currentHeading - manualSliderOffset + 360) % 360;
-
-            // Nasconde la schermata di calibrazione e mostra gli elementi AR
+            // Mostra fotocamera e livello AR
             document.getElementById('calib-screen').classList.add('hidden');
             document.getElementById('camera-feed').classList.remove('hidden');
             document.getElementById('ar-canvas').classList.remove('hidden');
@@ -196,7 +181,7 @@
                     const streamFallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                     video.srcObject = streamFallback;
                 } catch (e) {
-                    alert("Impossibile accedere alla fotocamera. Verifica i permessi del browser.");
+                    alert("Impossibile accedere alla fotocamera. Verifica i permessi nel browser.");
                 }
             }
         }
@@ -216,7 +201,7 @@
             });
         }
 
-        // 3. CALCOLO VETTORE GRAVITAZIONALE
+        // MOTORE VETTORIALE GRAVITAZIONALE
         function getGravityAttitude(alpha, beta, gamma) {
             const a = alpha * RAD;
             const b = beta * RAD;
@@ -256,18 +241,12 @@
             return { heading, pitch, roll };
         }
 
-        // 4. CICLO UNICO DI RENDERING
+        // CICLO RENDERING
         function renderLoop() {
             const attitude = getGravityAttitude(rawAlpha, rawBeta, rawGamma);
             currentHeading = attitude.heading;
 
-            if (!isARActive) {
-                // FASE 1: Aggiorna solo la freccia della bussola
-                const needle = document.getElementById('needle');
-                const displayAngle = (currentHeading - manualSliderOffset + 360) % 360;
-                needle.style.transform = `rotate(${displayAngle}deg)`;
-            } else {
-                // FASE 2: Disegna l'HUD AR sul Canvas
+            if (isARActive) {
                 renderARHUD(attitude);
             }
 
@@ -298,7 +277,7 @@
             if (diffR < -180) diffR += 360;
             sRoll = sRoll + diffR * 0.12;
 
-            // Aggiorna Telemetria AR
+            // Telemetria
             document.getElementById('v-head').innerText = sHeading.toFixed(1);
             document.getElementById('v-pitch').innerText = sPitch.toFixed(1);
             document.getElementById('v-roll').innerText = sRoll.toFixed(1);
@@ -338,7 +317,7 @@
                 ctx.fillText(d + "°", wLine + 5, y + 4);
             }
 
-            // --- ASSI VERTICALI PUNTI CARDINALI ---
+            // --- ASSI VERTICALI PUNTI CARDINALI (CORRETTI CON OFFSET TAP) ---
             const finalHeading = (sHeading - calibratedOffset + 360) % 360;
             const cardinals = [
                 { name: "N (0°)",   deg: 0 },
