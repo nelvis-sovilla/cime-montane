@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Multi-Server Failover</title>
+    <title>PeakFinder AR - Depth Band Filter</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -82,13 +82,13 @@
         }
 
         .slider-box {
-            width: 100%; max-width: 360px; background: rgba(15, 23, 42, 0.9);
-            border: 1px solid #06b6d4; padding: 8px 16px; border-radius: 20px;
+            width: 100%; max-width: 380px; background: rgba(15, 23, 42, 0.92);
+            border: 1px solid #06b6d4; padding: 10px 16px; border-radius: 20px;
             text-align: center; font-size: 12px; color: #fff;
             box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
 
-        input[type=range] { width: 100%; height: 30px; accent-color: #06b6d4; }
+        input[type=range] { width: 100%; height: 32px; accent-color: #06b6d4; margin-top: 4px; }
 
         .btn-primary { 
             width: 100%; max-width: 340px; background: #06b6d4; color: #0b0f19; 
@@ -109,8 +109,8 @@
     <!-- FASE 1: CALIBRAZIONE TAP NORD -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>PEAKFINDER AR - FAILOVER MULTI-SERVER</h1>
-            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per calibrare e avviare il download live.</p>
+            <h1>PEAKFINDER AR - FILTRO PROFONDITÀ</h1>
+            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per scaricare la mappa 3D del territorio.</p>
         </div>
 
         <div class="calib-body">
@@ -127,19 +127,23 @@
     <video id="camera-feed" autoplay playsinline muted class="hidden"></video>
     <canvas id="ar-canvas" class="hidden"></canvas>
 
-    <!-- Telemetria AR e Stato GPS -->
+    <!-- Telemetria AR e Stato Filtro -->
     <div id="hud-telemetry" class="hud-overlay hidden">
-        <div class="hud-title">PEAKFINDER AR - STATO RETE</div>
+        <div class="hud-title">PEAKFINDER AR - FILTRO LIVE</div>
         <div>GPS: <span id="v-gps" class="val">In attesa...</span></div>
-        <div>Cime: <span id="v-peaks" class="val">0</span> | Raggio: <span id="v-radius" class="val">20 km</span></div>
+        <div>Cime Visibili: <span id="v-peaks" class="val">0</span> (<span id="v-total" class="val">0</span> tot)</div>
+        <div>Banda: <span id="v-band" class="val">0 - 15 km</span></div>
         <div>Stato: <span id="v-source" class="val">In attesa...</span> <button id="retry-btn" class="btn-retry hidden" onclick="manualRetryFetch()">Riprova</button></div>
     </div>
 
-    <!-- Controlli AR con Slider Raggio -->
+    <!-- Controlli AR con Slider Profondità / Buffer -->
     <div id="ar-controls" class="controls-bar hidden">
         <div class="slider-box">
-            <span>Raggio di ricerca cime: <b id="radius-val" style="color:#06b6d4;">20 km</b></span>
-            <input type="range" id="radius-slider" min="5" max="60" step="5" value="20">
+            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">10 km</b></div>
+            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
+                Visibili tra <span id="dist-min" style="color:#fff;">5</span> e <span id="dist-max" style="color:#fff;">15</span> km (Buffer ±5 km)
+            </div>
+            <input type="range" id="depth-slider" min="5" max="75" step="1" value="10">
         </div>
         <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
     </div>
@@ -148,6 +152,11 @@
         const RAD = Math.PI / 180;
         const DEG = 180 / Math.PI;
 
+        // Costante Buffer Distanza (Tolleranza in km attorno allo slider)
+        const BUFFER_DELTA_KM = 5;
+        // Raggio massimo di download globale da OpenStreetMap (unica macro-area)
+        const FETCH_MACRO_RADIUS_KM = 80;
+
         // Sensori & Assetto
         let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
         let sHeading = 0, sPitch = 0, sRoll = 0;
@@ -155,15 +164,16 @@
         let calibratedOffset = 0;
         let isARActive = false;
 
-        // GPS e Dati Cime Reali
+        // GPS e Dati Cime
         let userLat = null, userLon = null, userAlt = 0;
-        let searchRadiusKm = 20;
-        let activePeaks = [];
+        let targetDistanceKm = 10;
         
-        let lastQueryLat = null, lastQueryLon = null, lastQueryRadius = null;
+        let allDownloadedPeaks = []; // Master Database Locale Scaricato
+        let activePeaks = [];        // Cime Filtrate per la banda corrente
+
+        let lastQueryLat = null, lastQueryLon = null;
         let isFetching = false;
 
-        // Elenco server Overpass specchiati a livello globale
         const overpassServers = [
             "https://overpass-api.de/api/interpreter",
             "https://overpass.kumi.systems/api/interpreter",
@@ -180,24 +190,30 @@
             requestAnimationFrame(renderLoop);
         });
 
+        // SLIDER PROFONDITÀ A BANDA (BUFFER ISTANTANEO)
         function setupSlider() {
-            const slider = document.getElementById('radius-slider');
-            const radiusVal = document.getElementById('radius-val');
-            const vRadius = document.getElementById('v-radius');
-
-            slider.addEventListener('change', () => {
-                searchRadiusKm = parseInt(slider.value);
-                radiusVal.innerText = `${searchRadiusKm} km`;
-                vRadius.innerText = `${searchRadiusKm} km`;
-                
-                if (userLat !== null && userLon !== null) {
-                    fetchPeaksOnline(userLat, userLon, searchRadiusKm, true);
-                }
-            });
+            const slider = document.getElementById('depth-slider');
 
             slider.addEventListener('input', () => {
-                radiusVal.innerText = `${slider.value} km`;
+                targetDistanceKm = parseInt(slider.value);
+                updateBufferUIAndFilter();
             });
+        }
+
+        function updateBufferUIAndFilter() {
+            const minDist = Math.max(0, targetDistanceKm - BUFFER_DELTA_KM);
+            const maxDist = targetDistanceKm + BUFFER_DELTA_KM;
+
+            document.getElementById('dist-target').innerText = `${targetDistanceKm} km`;
+            document.getElementById('dist-min').innerText = `${minDist}`;
+            document.getElementById('dist-max').innerText = `${maxDist}`;
+            document.getElementById('v-band').innerText = `${minDist} - ${maxDist} km`;
+
+            // Filtraggio istantaneo in memoria senza chiamate ad internet
+            if (allDownloadedPeaks.length > 0) {
+                activePeaks = allDownloadedPeaks.filter(p => p.dist >= minDist && p.dist <= maxDist);
+                document.getElementById('v-peaks').innerText = activePeaks.length;
+            }
         }
 
         // GEOLOCALIZZAZIONE GPS
@@ -211,8 +227,9 @@
 
                         document.getElementById('v-gps').innerText = `${userLat.toFixed(3)}°, ${userLon.toFixed(3)}°`;
 
-                        if (shouldRefetch(userLat, userLon, searchRadiusKm)) {
-                            fetchPeaksOnline(userLat, userLon, searchRadiusKm);
+                        // Scarica l'ampia macro-area (80 km) solo se ci si sposta di oltre 2 km
+                        if (shouldRefetchMacroArea(userLat, userLon)) {
+                            fetchMacroAreaPeaks(userLat, userLon);
                         }
                     },
                     err => {
@@ -224,20 +241,20 @@
             }
         }
 
-        function shouldRefetch(lat, lon, radius) {
-            if (lastQueryLat === null || lastQueryLon === null || lastQueryRadius !== radius) return true;
+        function shouldRefetchMacroArea(lat, lon) {
+            if (lastQueryLat === null || lastQueryLon === null) return true;
             const distMoved = calculateDistance(lastQueryLat, lastQueryLon, lat, lon);
-            return distMoved > 0.5;
+            return distMoved > 2.0; // Download di aggiornamento solo dopo 2 km di cammino
         }
 
         function manualRetryFetch() {
             if (userLat !== null && userLon !== null) {
-                fetchPeaksOnline(userLat, userLon, searchRadiusKm, true);
+                fetchMacroAreaPeaks(userLat, userLon, true);
             }
         }
 
-        // RICERCA A CASCATA (FAILOVER SEQUENZIALE)
-        async function fetchPeaksOnline(lat, lon, radiusKm, force = false) {
+        // UNICO DOWNLOAD AD AMPIO RAGGIO (80 KM)
+        async function fetchMacroAreaPeaks(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
 
@@ -247,26 +264,24 @@
 
             lastQueryLat = lat;
             lastQueryLon = lon;
-            lastQueryRadius = radiusKm;
 
-            const latDelta = radiusKm / 111;
-            const lonDelta = radiusKm / (111 * Math.cos(lat * RAD));
+            const latDelta = FETCH_MACRO_RADIUS_KM / 111;
+            const lonDelta = FETCH_MACRO_RADIUS_KM / (111 * Math.cos(lat * RAD));
 
             const minLat = (lat - latDelta).toFixed(4);
             const maxLat = (lat + latDelta).toFixed(4);
             const minLon = (lon - lonDelta).toFixed(4);
             const maxLon = (lon + lonDelta).toFixed(4);
 
-            const query = `[out:json][timeout:10];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body;`;
+            const query = `[out:json][timeout:15];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
 
-            // Tenta i server uno ad uno in modo sequenziale
             for (let i = 0; i < overpassServers.length; i++) {
                 const serverUrl = `${overpassServers[i]}?data=${encodeURIComponent(query)}`;
                 statusSource.innerText = `Srv ${i + 1}/${overpassServers.length}...`;
 
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s max per server
+                    const timeoutId = setTimeout(() => controller.abort(), 7000);
 
                     const res = await fetch(serverUrl, { signal: controller.signal });
                     clearTimeout(timeoutId);
@@ -276,28 +291,27 @@
                         if (data && data.elements) {
                             if (data.elements.length > 0) {
                                 statusSource.innerText = `OK (Srv ${i + 1})`;
-                                processPeaksData(data.elements, lat, lon);
+                                processMacroPeaksData(data.elements, lat, lon);
                             } else {
-                                statusSource.innerText = "Nessuna cima nel raggio";
+                                statusSource.innerText = "Nessuna cima nell'area";
+                                allDownloadedPeaks = [];
                                 activePeaks = [];
                                 document.getElementById('v-peaks').innerText = "0";
+                                document.getElementById('v-total').innerText = "0";
                             }
                             isFetching = false;
-                            return; // Successo! Esci dalla funzione
+                            return;
                         }
                     }
-                } catch (e) {
-                    // Se fallisce (timeout, CORS o errore di rete), passa al server successivo
-                }
+                } catch (e) { }
             }
 
-            // Se tutti e 4 i server hanno fallito
             isFetching = false;
-            statusSource.innerText = "Tutti i Server Occupati";
+            statusSource.innerText = "Server Occupati";
             retryBtn.classList.remove('hidden');
         }
 
-        function processPeaksData(elements, lat, lon) {
+        function processMacroPeaksData(elements, lat, lon) {
             let parsed = elements.map(el => {
                 if (!el || !el.tags) return null;
                 const name = el.tags.name || el.tags['name:it'] || el.tags.official_name;
@@ -307,8 +321,6 @@
                 if (isNaN(ele)) return null;
 
                 const distKm = calculateDistance(lat, lon, el.lat, el.lon);
-                if (distKm > searchRadiusKm) return null;
-
                 const bearing = calculateBearing(lat, lon, el.lat, el.lon);
                 const eleDiffMeters = ele - userAlt;
                 const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
@@ -317,8 +329,10 @@
             }).filter(p => p !== null);
 
             parsed.sort((a, b) => a.dist - b.dist);
-            activePeaks = parsed.slice(0, 30);
-            document.getElementById('v-peaks').innerText = activePeaks.length;
+            allDownloadedPeaks = parsed;
+            
+            document.getElementById('v-total').innerText = allDownloadedPeaks.length;
+            updateBufferUIAndFilter();
         }
 
         function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -339,6 +353,7 @@
             return (Math.atan2(y, x) * DEG + 360) % 360;
         }
 
+        // CALIBRAZIONE TAP NORD
         async function calibrateAndStartAR() {
             calibratedOffset = currentHeading;
 
@@ -524,7 +539,7 @@
                 }
             });
 
-            // 3. RENDERING ETICHETTE CIME REALI
+            // 3. RENDERING ETICHETTE CIME REALI (FILTRATE DAL BUFFER)
             activePeaks.forEach(peak => {
                 let diffH = peak.bearing - finalHeading;
                 if (diffH > 180) diffH -= 360;
