@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Solo Dati Reali</title>
+    <title>PeakFinder AR - Dati Reali Veloci</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -65,10 +65,16 @@
             background: rgba(15, 23, 42, 0.85); border: 1px solid #06b6d4; 
             padding: 10px 14px; border-radius: 8px; font-size: 11px; z-index: 5; 
             box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-family: monospace;
-            display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
         }
         .hud-title { font-weight: bold; font-size: 12px; text-transform: uppercase; color: #fff; width: 100%; border-bottom: 1px solid #06b6d4; padding-bottom: 4px; }
         .val { color: #fff; font-weight: bold; }
+
+        .btn-retry {
+            background: #06b6d4; color: #0b0f19; border: none; padding: 3px 8px;
+            font-weight: bold; font-size: 10px; border-radius: 4px; cursor: pointer;
+            text-transform: uppercase; margin-left: 5px;
+        }
 
         .controls-bar { 
             position: absolute; bottom: 20px; left: 15px; right: 15px; 
@@ -103,8 +109,8 @@
     <!-- FASE 1: CALIBRAZIONE TAP NORD -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>PEAKFINDER AR - SOLO REALE</h1>
-            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per calibrare e attivare la ricerca live.</p>
+            <h1>PEAKFINDER AR - BELLUNO LIVE</h1>
+            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per calibrare e scaricare le cime.</p>
         </div>
 
         <div class="calib-body">
@@ -125,9 +131,8 @@
     <div id="hud-telemetry" class="hud-overlay hidden">
         <div class="hud-title">PEAKFINDER AR - DATI REALI</div>
         <div>GPS: <span id="v-gps" class="val">In attesa...</span></div>
-        <div>Cime Trovate: <span id="v-peaks" class="val">0</span></div>
-        <div>Raggio: <span id="v-radius" class="val">20 km</span></div>
-        <div>Fonte: <span id="v-source" class="val">In attesa...</span></div>
+        <div>Cime: <span id="v-peaks" class="val">0</span> | Raggio: <span id="v-radius" class="val">20 km</span></div>
+        <div>Stato: <span id="v-source" class="val">In attesa...</span> <button id="retry-btn" class="btn-retry hidden" onclick="manualRetryFetch()">Riprova</button></div>
     </div>
 
     <!-- Controlli AR con Slider Raggio -->
@@ -203,31 +208,36 @@
                         }
                     },
                     err => {
-                        document.getElementById('v-gps').innerText = "Attiva il GPS nel telefono";
+                        document.getElementById('v-gps').innerText = "Attiva il GPS";
                         document.getElementById('v-source').innerText = "GPS Non Disponibile";
-                        activePeaks = [];
-                        document.getElementById('v-peaks').innerText = "0";
                     },
                     { enableHighAccuracy: true, timeout: 10000 }
                 );
-            } else {
-                document.getElementById('v-gps').innerText = "GPS Non Supportato";
             }
         }
 
         function shouldRefetch(lat, lon, radius) {
             if (lastQueryLat === null || lastQueryLon === null || lastQueryRadius !== radius) return true;
             const distMoved = calculateDistance(lastQueryLat, lastQueryLon, lat, lon);
-            return distMoved > 0.5; // Aggiorna solo ogni 500m di spostamento
+            return distMoved > 0.5;
         }
 
-        // RICERCA REALE OVERPASS API
+        function manualRetryFetch() {
+            if (userLat !== null && userLon !== null) {
+                fetchPeaksOnline(userLat, userLon, searchRadiusKm, true);
+            }
+        }
+
+        // RICERCA VELOCIZZATA "out body qt;"
         async function fetchPeaksOnline(lat, lon, radiusKm, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
 
             const statusSource = document.getElementById('v-source');
+            const retryBtn = document.getElementById('retry-btn');
+            
             statusSource.innerText = "Download cime...";
+            retryBtn.classList.add('hidden');
 
             lastQueryLat = lat;
             lastQueryLon = lon;
@@ -241,17 +251,19 @@
             const minLon = (lon - lonDelta).toFixed(4);
             const maxLon = (lon + lonDelta).toFixed(4);
 
-            const query = `[out:json][timeout:12];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body;`;
+            // "out body qt;" velocizza la risposta del server di circa 5 volte
+            const query = `[out:json][timeout:15];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
             
             const servers = [
                 `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
-                `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`
+                `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`,
+                `https://overpass.private.coffee/api/interpreter?data=${encodeURIComponent(query)}`
             ];
 
             for (let url of servers) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 8000);
+                    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
 
                     const res = await fetch(url, { signal: controller.signal });
                     clearTimeout(timeoutId);
@@ -260,7 +272,7 @@
                         const data = await res.json();
                         if (data && data.elements) {
                             if (data.elements.length > 0) {
-                                statusSource.innerText = "OpenStreetMap (Live)";
+                                statusSource.innerText = "OpenStreetMap (OK)";
                                 processPeaksData(data.elements, lat, lon);
                             } else {
                                 statusSource.innerText = "Nessuna cima nel raggio";
@@ -275,7 +287,8 @@
             }
 
             isFetching = false;
-            statusSource.innerText = "Errore Rete / Server Bsy";
+            statusSource.innerText = "Server Occupato";
+            retryBtn.classList.remove('hidden');
         }
 
         function processPeaksData(elements, lat, lon) {
@@ -298,7 +311,7 @@
             }).filter(p => p !== null);
 
             parsed.sort((a, b) => a.dist - b.dist);
-            activePeaks = parsed.slice(0, 30); // Prende le 30 cime più vicine reali
+            activePeaks = parsed.slice(0, 30);
             document.getElementById('v-peaks').innerText = activePeaks.length;
         }
 
