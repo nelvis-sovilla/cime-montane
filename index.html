@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>HUD Fotocamera - Motore Bussola Celeste</title>
+    <title>HUD Fotocamera - Motore 3D Stabile</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: monospace, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #06b6d4; }
@@ -11,57 +11,41 @@
         #camera-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         #ar-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
 
-        /* Pannello Telemetria */
+        /* Telemetria */
         .hud-overlay { position: absolute; top: 15px; left: 15px; background: rgba(15, 23, 42, 0.85); border: 1px solid #06b6d4; padding: 12px; border-radius: 8px; font-size: 12px; z-index: 5; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        .hud-title { font-weight: bold; font-size: 14px; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid #06b6d4; padding-bottom: 4px; color: #fff; }
+        .hud-title { font-weight: bold; font-size: 13px; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid #06b6d4; padding-bottom: 4px; color: #fff; }
         .val { color: #fff; font-weight: bold; }
 
-        /* Controlli Debug */
+        /* Controlli */
         .controls-bar { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 10px; z-index: 5; padding: 0 15px; }
-        .btn { flex: 1; max-width: 150px; background: #06b6d4; color: #000; border: none; padding: 12px 10px; font-weight: bold; font-size: 13px; border-radius: 8px; cursor: pointer; text-transform: uppercase; }
+        .btn { flex: 1; max-width: 160px; background: #06b6d4; color: #000; border: none; padding: 12px 10px; font-weight: bold; font-size: 13px; border-radius: 8px; cursor: pointer; text-transform: uppercase; }
         .btn:active { opacity: 0.8; }
-        .btn-outline { background: rgba(15, 23, 42, 0.85); color: #06b6d4; border: 1px solid #06b6d4; }
     </style>
 </head>
 <body>
 
-    <!-- Sfondo Fotocamera -->
     <video id="camera-feed" autoplay playsinline muted></video>
-    
-    <!-- Livello Disegno (Griglia HUD) -->
     <canvas id="ar-canvas"></canvas>
 
-    <!-- Telemetria Motore Bussola Celeste -->
     <div class="hud-overlay">
-        <div class="hud-title">MOTORE BUSSOLA CELESTE</div>
-        <div>Heading (Azimuth): <span id="v-head" class="val">0</span>°</div>
-        <div>Pitch (Beta)     : <span id="v-pitch" class="val">0</span>°</div>
-        <div>Roll (Gamma)     : <span id="v-roll" class="val">0</span>°</div>
-        <div style="margin-top:5px; font-size:10px; color:#94a3b8;">Schermo: <span id="v-orient">Verticale</span></div>
+        <div class="hud-title">MOTORE 3D STABILE (FOTOCAMERA)</div>
+        <div>Heading (Bussola): <span id="v-head" class="val">0</span>°</div>
+        <div>Pitch (Inclinazione): <span id="v-pitch" class="val">0</span>°</div>
+        <div>Roll (Rollio)      : <span id="v-roll" class="val">0</span>°</div>
     </div>
 
-    <!-- Tasti per sistemare assi invertiti su hardware specifici -->
     <div class="controls-bar">
-        <button class="btn btn-outline" onclick="invertPitch = !invertPitch">Inverti Alto/Basso</button>
-        <button class="btn btn-outline" onclick="invertRoll = !invertRoll">Inverti Rollio</button>
-        <button class="btn" onclick="calibratedOffset = currentHeading">Calibra Nord</button>
+        <button class="btn" onclick="calibratedOffset = currentHeading">Zero Nord</button>
     </div>
 
     <script>
         const RAD = Math.PI / 180;
         const DEG = 180 / Math.PI;
 
-        // Variabili globali dei sensori
         let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
+        let sHeading = 0, sPitch = 0, sRoll = 0;
         let currentHeading = 0;
         let calibratedOffset = 0;
-
-        // Modificatori per hardware
-        let invertPitch = false;
-        let invertRoll = false;
-
-        // Smoothing (smorzamento base per evitare micro-tremolii)
-        let sHeading = 0, sPitch = 0, sRoll = 0;
 
         window.addEventListener('DOMContentLoaded', () => {
             initCamera();
@@ -71,7 +55,6 @@
             requestAnimationFrame(renderHUD);
         });
 
-        // 1. ATTIVAZIONE FOTOCAMERA
         async function initCamera() {
             const video = document.getElementById('camera-feed');
             try {
@@ -82,7 +65,7 @@
                     const streamFallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                     video.srcObject = streamFallback;
                 } catch (e) {
-                    console.warn("Fotocamera negata o non presente.");
+                    console.warn("Fotocamera non disponibile.");
                 }
             }
         }
@@ -93,37 +76,44 @@
             canvas.height = window.innerHeight;
         }
 
-        function getScreenAngle() {
-            return (screen.orientation && typeof screen.orientation.angle === 'number') 
-                ? screen.orientation.angle 
-                : (window.orientation || 0);
-        }
-
-        // 2. MOTORE SENSORI (RECUPERATO DA BUSSOLA CELESTE)
         function initSensors() {
             window.addEventListener('deviceorientation', (e) => {
                 if (e.alpha === null) return;
-                
                 rawAlpha = e.alpha;
                 rawBeta = e.beta || 0;
                 rawGamma = e.gamma || 0;
-
-                // Calcolo Heading ESATTO copiato da Bussola Celeste Pro
-                const alphaRad = rawAlpha * RAD; 
-                const betaRad = rawBeta * RAD;
-                const East = -Math.sin(alphaRad) * Math.cos(betaRad);
-                const North = Math.cos(alphaRad) * Math.cos(betaRad);
-                
-                let heading = Math.atan2(East, North) * DEG;
-                if (heading < 0) heading += 360;
-                currentHeading = heading;
-
-                // Aggiorna Telemetria a schermo
-                document.getElementById('v-head').innerText = currentHeading.toFixed(1);
             });
         }
 
-        // 3. DISEGNO DELLA GRIGLIA HUD
+        // MOTORE VETTORIALE 3D ESENTE DA GIMBAL LOCK
+        function calculateOrientation3D(alpha, beta, gamma) {
+            const a = alpha * RAD;
+            const b = beta * RAD;
+            const g = gamma * RAD;
+
+            const cA = Math.cos(a), sA = Math.sin(a);
+            const cB = Math.cos(b), sB = Math.sin(b);
+            const cG = Math.cos(g), sG = Math.sin(g);
+
+            // Vettore direzione della fotocamera posteriore nello spazio terrestre (Est, Nord, Alto)
+            const camE = -(cA * sG + sA * sB * cG);
+            const camN = -(sA * sG - cA * sB * cG);
+            const camU = -(cB * cG);
+
+            // Heading (Bussola orizzontale reale)
+            let heading = Math.atan2(camE, camN) * DEG;
+            if (heading < 0) heading += 360;
+
+            // Pitch (Elevazione fotocamera rispetto all'orizzonte: da -90° guarda giù a +90° guarda il cielo)
+            const pitch = Math.asin(Math.max(-1, Math.min(1, camU))) * DEG;
+
+            // Roll (Inclinazione laterale dello schermo)
+            const isLandscape = window.innerWidth > window.innerHeight;
+            let roll = isLandscape ? beta : gamma;
+
+            return { heading, pitch, roll };
+        }
+
         function renderHUD() {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
@@ -133,68 +123,38 @@
             const h = canvas.height;
             const cx = w / 2;
             const cy = h / 2;
-            
             const isLandscape = w > h;
-            document.getElementById('v-orient').innerText = isLandscape ? "Orizzontale" : "Verticale";
 
-            // --- A. GESTIONE PITCH E ROLL IN BASE ALLO SCHERMO ---
-            let pitch = 0;
-            let roll = 0;
+            // Calcolo orientamento 3D
+            const orientation = calculateOrientation3D(rawAlpha, rawBeta, rawGamma);
+            currentHeading = orientation.heading;
 
-            if (!isLandscape) {
-                // Schermo Verticale: beta 90 = orizzonte
-                pitch = rawBeta - 90;
-                roll = rawGamma;
-            } else {
-                // Schermo Orizzontale
-                const scrAngle = getScreenAngle();
-                if (scrAngle === 90 || scrAngle === -270) {
-                    pitch = -rawGamma;
-                    roll = rawBeta;
-                } else {
-                    pitch = rawGamma;
-                    roll = -rawBeta;
-                }
-            }
-
-            // Inversioni manuali per correggere device specifici
-            if (invertPitch) pitch = -pitch;
-            if (invertRoll) roll = -roll;
-
-            document.getElementById('v-pitch').innerText = pitch.toFixed(1);
-            document.getElementById('v-roll').innerText = roll.toFixed(1);
-
-            // Applica smorzamento per non far "saltellare" la grafica (Smoothing)
-            // Gestione del salto 0-360 per l'heading
+            // Smorzamento (Smoothing LERP a 0.15)
             let diffH = currentHeading - sHeading;
             if (diffH > 180) diffH -= 360;
             if (diffH < -180) diffH += 360;
             sHeading = (sHeading + diffH * 0.15 + 360) % 360;
-            
-            sPitch += (pitch - sPitch) * 0.15;
-            sRoll += (roll - sRoll) * 0.15;
 
-            // --- B. TRACCIAMENTO ORIZZONTE ARTIFICIALE ---
-            // Convertiamo i gradi di inclinazione in pixel (es: 60 gradi = altezza intera schermo)
-            const fovVertical = isLandscape ? 45 : 65; 
-            const pxPerDegree = h / fovVertical;
+            sPitch += (orientation.pitch - sPitch) * 0.15;
+            sRoll += (orientation.roll - sRoll) * 0.15;
+
+            // Telemetria
+            document.getElementById('v-head').innerText = sHeading.toFixed(1);
+            document.getElementById('v-pitch').innerText = sPitch.toFixed(1);
+            document.getElementById('v-roll').innerText = sRoll.toFixed(1);
+
+            // --- 1. ORIZZONTE ARTIFICIALE ---
+            const fovV = isLandscape ? 45 : 65; 
+            const pxPerDegree = h / fovV;
             
-            // Quando si punta verso l'alto (pitch negativo), l'orizzonte deve scendere (Y positivo)
-            const horizonY = -(sPitch * pxPerDegree);
+            // Quando pitch > 0 (fotocamera guarda in alto), la linea dell'orizzonte deve scendere
+            const horizonY = sPitch * pxPerDegree;
 
             ctx.save();
-            ctx.translate(cx, cy); // Origine al centro dello schermo
-            ctx.rotate(sRoll * RAD); // Applica il rollio
+            ctx.translate(cx, cy);
+            ctx.rotate(-sRoll * RAD); // Ruota in senso opposto per mantenere la linea parallela alla Terra
 
-            // Mirino fisso al centro (Croce rossa)
-            ctx.strokeStyle = "#ef4444";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(-15, 0); ctx.lineTo(15, 0);
-            ctx.moveTo(0, -15); ctx.lineTo(0, 15);
-            ctx.stroke();
-
-            // Linea dell'Orizzonte Principale (Verde Acqua)
+            // Linea dell'Orizzonte Azzurra
             ctx.strokeStyle = "#06b6d4";
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -202,28 +162,33 @@
             ctx.lineTo(w, horizonY);
             ctx.stroke();
 
-            // Linee di inclinazione (+/- 10, 20, 30 gradi)
+            // Tacche di inclinazione
             ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
-            ctx.lineWidth = 1;
             ctx.fillStyle = "#06b6d4";
-            ctx.font = "10px monospace";
+            ctx.font = "11px monospace";
             for (let d = -40; d <= 40; d += 10) {
                 if (d === 0) continue;
                 let y = horizonY - (d * pxPerDegree);
-                let wLine = d % 20 === 0 ? 60 : 30; // Linee lunghe ogni 20, corte ogni 10
-                
+                let wLine = d % 20 === 0 ? 50 : 25;
                 ctx.beginPath();
-                ctx.moveTo(-wLine, y);
-                ctx.lineTo(wLine, y);
+                ctx.moveTo(-wLine, y); ctx.lineTo(wLine, y);
                 ctx.stroke();
-                ctx.fillText(d + "°", wLine + 5, y + 3);
+                ctx.fillText(d + "°", wLine + 5, y + 4);
             }
-            
             ctx.restore();
 
-            // --- C. TRACCIAMENTO PUNTI CARDINALI (Assi Verticali) ---
+            // Mirino centrale fisso (Rosso)
+            ctx.strokeStyle = "#ef4444";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+            ctx.moveTo(cx - 20, cy); ctx.lineTo(cx + 20, cy);
+            ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy + 20);
+            ctx.stroke();
+
+            // --- 2. ASSI VERTICALI DEI PUNTI CARDINALI ---
             const finalHeading = (sHeading - calibratedOffset + 360) % 360;
-            const fovHorizontal = isLandscape ? 70 : 50;
+            const fovH = isLandscape ? 70 : 50;
 
             const cardinals = [
                 { name: "N", deg: 0 },
@@ -232,7 +197,7 @@
                 { name: "W", deg: 270 }
             ];
 
-            ctx.fillStyle = "#fff";
+            ctx.fillStyle = "#ffffff";
             ctx.font = "bold 18px monospace";
             ctx.textAlign = "center";
             ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
@@ -243,17 +208,14 @@
                 if (diff > 180) diff -= 360;
                 if (diff < -180) diff += 360;
 
-                // Disegna se il punto cardinale rientra nel campo visivo orizzontale
-                if (Math.abs(diff) <= fovHorizontal / 2) {
-                    let posX = cx + (diff * (w / fovHorizontal));
+                if (Math.abs(diff) <= fovH / 2) {
+                    let posX = cx + (diff * (w / fovH));
                     
-                    // Disegna asse verticale bianco semitrasparente
                     ctx.beginPath();
                     ctx.moveTo(posX, 100);
                     ctx.lineTo(posX, h - 80);
                     ctx.stroke();
 
-                    // Disegna lettera punto cardinale
                     ctx.fillText(pt.name, posX, h - 60);
                 }
             });
