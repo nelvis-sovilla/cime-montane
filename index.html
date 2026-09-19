@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Dati Reali Veloci</title>
+    <title>PeakFinder AR - Multi-Server Failover</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -109,8 +109,8 @@
     <!-- FASE 1: CALIBRAZIONE TAP NORD -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>PEAKFINDER AR - BELLUNO LIVE</h1>
-            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per calibrare e scaricare le cime.</p>
+            <h1>PEAKFINDER AR - FAILOVER MULTI-SERVER</h1>
+            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per calibrare e avviare il download live.</p>
         </div>
 
         <div class="calib-body">
@@ -129,7 +129,7 @@
 
     <!-- Telemetria AR e Stato GPS -->
     <div id="hud-telemetry" class="hud-overlay hidden">
-        <div class="hud-title">PEAKFINDER AR - DATI REALI</div>
+        <div class="hud-title">PEAKFINDER AR - STATO RETE</div>
         <div>GPS: <span id="v-gps" class="val">In attesa...</span></div>
         <div>Cime: <span id="v-peaks" class="val">0</span> | Raggio: <span id="v-radius" class="val">20 km</span></div>
         <div>Stato: <span id="v-source" class="val">In attesa...</span> <button id="retry-btn" class="btn-retry hidden" onclick="manualRetryFetch()">Riprova</button></div>
@@ -163,6 +163,14 @@
         let lastQueryLat = null, lastQueryLon = null, lastQueryRadius = null;
         let isFetching = false;
 
+        // Elenco server Overpass specchiati a livello globale
+        const overpassServers = [
+            "https://overpass-api.de/api/interpreter",
+            "https://overpass.kumi.systems/api/interpreter",
+            "https://overpass.private.coffee/api/interpreter",
+            "https://overpass.nchc.org.tw/api/interpreter"
+        ];
+
         window.addEventListener('DOMContentLoaded', () => {
             initSensors();
             initGPS();
@@ -192,7 +200,7 @@
             });
         }
 
-        // GEOLOCALIZZAZIONE REALE
+        // GEOLOCALIZZAZIONE GPS
         function initGPS() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(
@@ -228,15 +236,13 @@
             }
         }
 
-        // RICERCA VELOCIZZATA "out body qt;"
+        // RICERCA A CASCATA (FAILOVER SEQUENZIALE)
         async function fetchPeaksOnline(lat, lon, radiusKm, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
 
             const statusSource = document.getElementById('v-source');
             const retryBtn = document.getElementById('retry-btn');
-            
-            statusSource.innerText = "Download cime...";
             retryBtn.classList.add('hidden');
 
             lastQueryLat = lat;
@@ -251,28 +257,25 @@
             const minLon = (lon - lonDelta).toFixed(4);
             const maxLon = (lon + lonDelta).toFixed(4);
 
-            // "out body qt;" velocizza la risposta del server di circa 5 volte
-            const query = `[out:json][timeout:15];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
-            
-            const servers = [
-                `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
-                `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`,
-                `https://overpass.private.coffee/api/interpreter?data=${encodeURIComponent(query)}`
-            ];
+            const query = `[out:json][timeout:10];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body;`;
 
-            for (let url of servers) {
+            // Tenta i server uno ad uno in modo sequenziale
+            for (let i = 0; i < overpassServers.length; i++) {
+                const serverUrl = `${overpassServers[i]}?data=${encodeURIComponent(query)}`;
+                statusSource.innerText = `Srv ${i + 1}/${overpassServers.length}...`;
+
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
+                    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s max per server
 
-                    const res = await fetch(url, { signal: controller.signal });
+                    const res = await fetch(serverUrl, { signal: controller.signal });
                     clearTimeout(timeoutId);
 
                     if (res.ok) {
                         const data = await res.json();
                         if (data && data.elements) {
                             if (data.elements.length > 0) {
-                                statusSource.innerText = "OpenStreetMap (OK)";
+                                statusSource.innerText = `OK (Srv ${i + 1})`;
                                 processPeaksData(data.elements, lat, lon);
                             } else {
                                 statusSource.innerText = "Nessuna cima nel raggio";
@@ -280,14 +283,17 @@
                                 document.getElementById('v-peaks').innerText = "0";
                             }
                             isFetching = false;
-                            return;
+                            return; // Successo! Esci dalla funzione
                         }
                     }
-                } catch (e) { }
+                } catch (e) {
+                    // Se fallisce (timeout, CORS o errore di rete), passa al server successivo
+                }
             }
 
+            // Se tutti e 4 i server hanno fallito
             isFetching = false;
-            statusSource.innerText = "Server Occupato";
+            statusSource.innerText = "Tutti i Server Occupati";
             retryBtn.classList.remove('hidden');
         }
 
