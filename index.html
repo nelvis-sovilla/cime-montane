@@ -3,39 +3,132 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>HUD Fotocamera - Step 1 Corretto</title>
+    <title>HUD Fotocamera - Calibrazione Separata</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: monospace, sans-serif; }
-        body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #06b6d4; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
+        body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
         
         #camera-feed { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         #ar-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
 
-        /* Telemetria */
-        .hud-overlay { position: absolute; top: 15px; left: 15px; background: rgba(15, 23, 42, 0.85); border: 1px solid #06b6d4; padding: 12px; border-radius: 8px; font-size: 12px; z-index: 5; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        .hud-title { font-weight: bold; font-size: 13px; text-transform: uppercase; margin-bottom: 6px; border-bottom: 1px solid #06b6d4; padding-bottom: 4px; color: #fff; }
+        .hidden { display: none !important; }
+
+        /* ==========================================================================
+           FASE 1: SCHERMATA DEDICATA CALIBRAZIONE (NO FOTOCAMERA)
+           ========================================================================== */
+        .calib-container { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            display: flex; flex-direction: column; justify-content: space-between; 
+            padding: 24px 20px; z-index: 20; background: #0b0f19; 
+        }
+
+        .calib-header { text-align: center; margin-top: 10px; }
+        .calib-header h1 { color: #f8fafc; font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+        .calib-header p { color: #94a3b8; font-size: 13px; margin-top: 8px; line-height: 1.4; }
+
+        .calib-body { 
+            display: flex; flex-direction: column; align-items: center; justify-content: center; 
+            margin: auto 0; width: 100%; 
+        }
+
+        .compass-box {
+            width: 220px; height: 220px; border: 3px solid #06b6d4; border-radius: 50%;
+            position: relative; display: flex; align-items: center; justify-content: center;
+            background: #0f172a; box-shadow: 0 0 30px rgba(6, 182, 212, 0.15);
+            margin-bottom: 25px;
+        }
+
+        .needle {
+            width: 8px; height: 90px; background: #ef4444; position: absolute;
+            transform-origin: bottom center; top: 20px; border-radius: 4px;
+            transition: transform 0.05s ease-out;
+        }
+        .needle::before {
+            content: ''; position: absolute; top: -12px; left: -8px;
+            border-left: 12px solid transparent; border-right: 12px solid transparent;
+            border-bottom: 18px solid #ef4444;
+        }
+
+        .slider-card {
+            width: 100%; max-width: 320px; background: #0f172a; border: 1px solid #1e293b;
+            padding: 16px; border-radius: 16px; text-align: center;
+        }
+
+        input[type=range] { width: 100%; height: 36px; accent-color: #06b6d4; margin-top: 8px; }
+
+        /* ==========================================================================
+           FASE 2: ELEMENTI HUD VISTA AR (ATTIVI DOPO CONFERMA)
+           ========================================================================== */
+        .hud-overlay { 
+            position: absolute; top: 15px; left: 15px; 
+            background: rgba(15, 23, 42, 0.85); border: 1px solid #06b6d4; 
+            padding: 10px 14px; border-radius: 8px; font-size: 12px; z-index: 5; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-family: monospace;
+        }
+        .hud-title { font-weight: bold; font-size: 12px; text-transform: uppercase; margin-bottom: 4px; color: #fff; }
         .val { color: #fff; font-weight: bold; }
 
-        /* Controlli */
-        .controls-bar { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; justify-content: center; gap: 10px; z-index: 5; padding: 0 15px; }
-        .btn { flex: 1; max-width: 160px; background: #06b6d4; color: #000; border: none; padding: 12px 10px; font-weight: bold; font-size: 13px; border-radius: 8px; cursor: pointer; text-transform: uppercase; }
-        .btn:active { opacity: 0.8; }
+        .controls-bar { 
+            position: absolute; bottom: 20px; left: 0; right: 0; 
+            display: flex; justify-content: center; gap: 10px; z-index: 5; padding: 0 15px; 
+        }
+
+        /* BUTTONS */
+        .btn-primary { 
+            width: 100%; max-width: 340px; background: #06b6d4; color: #0b0f19; 
+            border: none; padding: 16px; font-weight: 700; font-size: 14px; 
+            border-radius: 30px; cursor: pointer; text-transform: uppercase; 
+            letter-spacing: 0.5px; margin: 0 auto; box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
+        }
+        .btn-primary:active { transform: scale(0.98); opacity: 0.9; }
+
+        .btn-secondary { 
+            background: rgba(15, 23, 42, 0.85); color: #06b6d4; border: 1px solid #06b6d4; 
+            padding: 10px 18px; font-weight: 600; font-size: 12px; border-radius: 20px; 
+            cursor: pointer; text-transform: uppercase;
+        }
     </style>
 </head>
 <body>
 
-    <video id="camera-feed" autoplay playsinline muted></video>
-    <canvas id="ar-canvas"></canvas>
+    <!-- FASE 1: SCHERMATA DEDICATA DI CALIBRAZIONE NORD -->
+    <div id="calib-screen" class="calib-container">
+        <div class="calib-header">
+            <h1>CALIBRAZIONE NORD</h1>
+            <p>Punta il telefono verso il Nord Reale.<br>Ruota lo smartphone o usa lo slider per allineare la freccia.</p>
+        </div>
 
-    <div class="hud-overlay">
-        <div class="hud-title">HUD STEP 1 - ORIZZONTE COMPENSATO</div>
-        <div>Heading (Bussola) : <span id="v-head" class="val">0</span>°</div>
-        <div>Pitch (Orizzonte): <span id="v-pitch" class="val">0</span>°</div>
-        <div>Roll (Inclinazione): <span id="v-roll" class="val">0</span>°</div>
+        <div class="calib-body">
+            <div class="compass-box">
+                <div id="needle" class="needle" style="transform: rotate(0deg);"></div>
+            </div>
+
+            <div class="slider-card">
+                <span style="font-size: 12px; color: #94a3b8;">Correzione Manuale Offset:</span>
+                <input type="range" id="angle-slider" min="0" max="359" value="0">
+                <div style="margin-top: 6px; font-size: 14px; color: #f8fafc;">
+                    Offset: <b id="angle-val" style="color: #06b6d4;">0°</b>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-primary" onclick="confirmAndStartAR()">CONFERMA NORD E AVVIA FOTOCAMERA</button>
     </div>
 
-    <div class="controls-bar">
-        <button class="btn" onclick="calibratedOffset = currentHeading">Zero Nord</button>
+    <!-- FASE 2: FOTOCAMERA E CANVAS AR (INIZIALMENTE NASCOSTI) -->
+    <video id="camera-feed" autoplay playsinline muted class="hidden"></video>
+    <canvas id="ar-canvas" class="hidden"></canvas>
+
+    <!-- Telemetria AR -->
+    <div id="hud-telemetry" class="hud-overlay hidden">
+        <div class="hud-title">HUD STEP 1 - VISTA AR</div>
+        <div>Heading: <span id="v-head" class="val">0</span>° | Offset: <span id="v-offset" class="val">0</span>°</div>
+        <div>Pitch  : <span id="v-pitch" class="val">0</span>° | Roll  : <span id="v-roll" class="val">0</span>°</div>
+    </div>
+
+    <!-- Controlli AR -->
+    <div id="ar-controls" class="controls-bar hidden">
+        <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
     </div>
 
     <script>
@@ -46,16 +139,54 @@
         let sHeading = 0, sPitch = 0, sRoll = 0;
         let currentHeading = 0;
         let calibratedOffset = 0;
+        let manualSliderOffset = 0;
+        let isARActive = false;
 
         window.addEventListener('DOMContentLoaded', () => {
-            initCamera();
             initSensors();
+            setupSlider();
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
-            requestAnimationFrame(renderHUD);
+            requestAnimationFrame(renderLoop);
         });
 
-        async function initCamera() {
+        // 1. SETUP SLIDER
+        function setupSlider() {
+            const slider = document.getElementById('angle-slider');
+            const angleVal = document.getElementById('angle-val');
+
+            slider.addEventListener('input', () => {
+                manualSliderOffset = parseInt(slider.value) || 0;
+                angleVal.innerText = `${manualSliderOffset}°`;
+            });
+        }
+
+        // 2. AVVIO FASE 2: ATTIVAZIONE FOTOCAMERA E INTERFACCIA AR
+        async function confirmAndStartAR() {
+            // Calcola l'offset di calibrazione definitivo
+            calibratedOffset = (currentHeading - manualSliderOffset + 360) % 360;
+
+            // Nasconde la schermata di calibrazione e mostra gli elementi AR
+            document.getElementById('calib-screen').classList.add('hidden');
+            document.getElementById('camera-feed').classList.remove('hidden');
+            document.getElementById('ar-canvas').classList.remove('hidden');
+            document.getElementById('hud-telemetry').classList.remove('hidden');
+            document.getElementById('ar-controls').classList.remove('hidden');
+
+            isARActive = true;
+            await startCamera();
+        }
+
+        function reopenCalibration() {
+            isARActive = false;
+            document.getElementById('calib-screen').classList.remove('hidden');
+            document.getElementById('camera-feed').classList.add('hidden');
+            document.getElementById('ar-canvas').classList.add('hidden');
+            document.getElementById('hud-telemetry').classList.add('hidden');
+            document.getElementById('ar-controls').classList.add('hidden');
+        }
+
+        async function startCamera() {
             const video = document.getElementById('camera-feed');
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
@@ -65,7 +196,7 @@
                     const streamFallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                     video.srcObject = streamFallback;
                 } catch (e) {
-                    console.warn("Fotocamera non disponibile.");
+                    alert("Impossibile accedere alla fotocamera. Verifica i permessi del browser.");
                 }
             }
         }
@@ -85,7 +216,7 @@
             });
         }
 
-        // Calcolo Atteggiamento Spaziale via Vettore Gravitazionale
+        // 3. CALCOLO VETTORE GRAVITAZIONALE
         function getGravityAttitude(alpha, beta, gamma) {
             const a = alpha * RAD;
             const b = beta * RAD;
@@ -95,16 +226,13 @@
             const cB = Math.cos(b), sB = Math.sin(b);
             const cG = Math.cos(g), sG = Math.sin(g);
 
-            // Proiezione della gravità sullo schermo
             const Gx = sG * cB;
             const Gy = -sB;
             const Gz = -cG * cB;
 
-            // Pitch (Elevazione fotocamera)
             const camUp = -Gz; 
             const pitch = Math.asin(Math.max(-1, Math.min(1, camUp))) * DEG;
 
-            // Roll (Inclinazione schermo)
             const isLandscape = window.innerWidth > window.innerHeight;
             let roll = 0;
 
@@ -120,7 +248,6 @@
                 }
             }
 
-            // Heading (Bussola Orizzontale 3D)
             const camE = -(cA * sG + sA * sB * cG);
             const camN = -(sA * sG - cA * sB * cG);
             let heading = Math.atan2(camE, camN) * DEG;
@@ -129,7 +256,25 @@
             return { heading, pitch, roll };
         }
 
-        function renderHUD() {
+        // 4. CICLO UNICO DI RENDERING
+        function renderLoop() {
+            const attitude = getGravityAttitude(rawAlpha, rawBeta, rawGamma);
+            currentHeading = attitude.heading;
+
+            if (!isARActive) {
+                // FASE 1: Aggiorna solo la freccia della bussola
+                const needle = document.getElementById('needle');
+                const displayAngle = (currentHeading - manualSliderOffset + 360) % 360;
+                needle.style.transform = `rotate(${displayAngle}deg)`;
+            } else {
+                // FASE 2: Disegna l'HUD AR sul Canvas
+                renderARHUD(attitude);
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        function renderARHUD(attitude) {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -140,11 +285,7 @@
             const cy = h / 2;
             const isLandscape = w > h;
 
-            // Calcolo orientamento
-            const attitude = getGravityAttitude(rawAlpha, rawBeta, rawGamma);
-            currentHeading = attitude.heading;
-
-            // Smorzamento LERP per fluidità visiva
+            // Smorzamento LERP
             let diffH = currentHeading - sHeading;
             if (diffH > 180) diffH -= 360;
             if (diffH < -180) diffH += 360;
@@ -157,10 +298,11 @@
             if (diffR < -180) diffR += 360;
             sRoll = sRoll + diffR * 0.12;
 
-            // Telemetria
+            // Aggiorna Telemetria AR
             document.getElementById('v-head').innerText = sHeading.toFixed(1);
             document.getElementById('v-pitch').innerText = sPitch.toFixed(1);
             document.getElementById('v-roll').innerText = sRoll.toFixed(1);
+            document.getElementById('v-offset').innerText = calibratedOffset.toFixed(1);
 
             const fovV = isLandscape ? 45 : 65; 
             const fovH = isLandscape ? 70 : 50;
@@ -168,17 +310,13 @@
             const pxPerDegreeV = h / fovV;
             const pxPerDegreeH = w / fovH;
             
-            // CORREZIONE: Inversione di segno per compensare il movimento reale della fotocamera
             const horizonY = -sPitch * pxPerDegreeV;
 
-            // =========================================================================
-            // GRIGLIA UNIFICATA IN SISTEMA DI COORDINATE RUOTATO (Orizzonte + Assi)
-            // =========================================================================
             ctx.save();
             ctx.translate(cx, cy);
-            ctx.rotate(-sRoll * RAD); // Ruota l'intero HUD in risposta al rollio del telefono
+            ctx.rotate(-sRoll * RAD);
 
-            // --- 1. ORIZZONTE ARTIFICIALE ---
+            // --- ORIZZONTE ARTIFICIALE ---
             ctx.strokeStyle = "#06b6d4";
             ctx.lineWidth = 2.5;
             ctx.beginPath();
@@ -186,7 +324,7 @@
             ctx.lineTo(w, horizonY);
             ctx.stroke();
 
-            // Tacche di Pitch (+/- 10, 20, 30 gradi)
+            // Tacche di Inclinazione
             ctx.strokeStyle = "rgba(6, 182, 212, 0.5)";
             ctx.fillStyle = "#06b6d4";
             ctx.font = "11px monospace";
@@ -200,7 +338,7 @@
                 ctx.fillText(d + "°", wLine + 5, y + 4);
             }
 
-            // --- 2. ASSI VERTICALI DEI PUNTI CARDINALI (Agganciati all'Orizzonte) ---
+            // --- ASSI VERTICALI PUNTI CARDINALI ---
             const finalHeading = (sHeading - calibratedOffset + 360) % 360;
             const cardinals = [
                 { name: "N (0°)",   deg: 0 },
@@ -214,11 +352,9 @@
                 if (diff > 180) diff -= 360;
                 if (diff < -180) diff += 360;
 
-                // Se il punto cardinale rientra nell'inquadratura
                 if (Math.abs(diff) <= fovH / 2) {
                     let posX = diff * pxPerDegreeH;
 
-                    // Asse Perpendicolare all'Orizzonte (Tratteggiata)
                     ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
                     ctx.lineWidth = 1.5;
                     ctx.setLineDash([6, 4]);
@@ -228,7 +364,6 @@
                     ctx.stroke();
                     ctx.setLineDash([]);
 
-                    // Targhetta del Punto Cardinale sulla linea dell'orizzonte
                     ctx.fillStyle = "#0f172a";
                     ctx.fillRect(posX - 35, horizonY - 14, 70, 28);
                     ctx.strokeStyle = "#06b6d4";
@@ -243,9 +378,9 @@
                 }
             });
 
-            ctx.restore(); // Ripristina il contesto normale dello schermo
+            ctx.restore();
 
-            // --- 3. MIRINO CENTRALE FISSO Dello Schermo ---
+            // MIRINO CENTRALE FISSO
             ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -253,8 +388,6 @@
             ctx.moveTo(cx - 20, cy); ctx.lineTo(cx + 20, cy);
             ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy + 20);
             ctx.stroke();
-
-            requestAnimationFrame(renderHUD);
         }
     </script>
 </body>
