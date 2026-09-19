@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Step 2 (Fix Network)</title>
+    <title>PeakFinder AR - Solo Dati Reali</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -103,8 +103,8 @@
     <!-- FASE 1: CALIBRAZIONE TAP NORD -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>STEP 2 - GPS & CIME MONTUOSE</h1>
-            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per calibrare e attivare fotocamera e GPS.</p>
+            <h1>PEAKFINDER AR - SOLO REALE</h1>
+            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per calibrare e attivare la ricerca live.</p>
         </div>
 
         <div class="calib-body">
@@ -123,8 +123,8 @@
 
     <!-- Telemetria AR e Stato GPS -->
     <div id="hud-telemetry" class="hud-overlay hidden">
-        <div class="hud-title">PEAKFINDER AR - RILEVAMENTO TERRITORIO</div>
-        <div>GPS: <span id="v-gps" class="val">Ricerca...</span></div>
+        <div class="hud-title">PEAKFINDER AR - DATI REALI</div>
+        <div>GPS: <span id="v-gps" class="val">In attesa...</span></div>
         <div>Cime Trovate: <span id="v-peaks" class="val">0</span></div>
         <div>Raggio: <span id="v-radius" class="val">20 km</span></div>
         <div>Fonte: <span id="v-source" class="val">In attesa...</span></div>
@@ -150,26 +150,13 @@
         let calibratedOffset = 0;
         let isARActive = false;
 
-        // GPS e Dati Cime
+        // GPS e Dati Cime Reali
         let userLat = null, userLon = null, userAlt = 0;
         let searchRadiusKm = 20;
         let activePeaks = [];
         
-        // Controllo per evitare query continue a Overpass
         let lastQueryLat = null, lastQueryLon = null, lastQueryRadius = null;
         let isFetching = false;
-
-        // Database locale offline di riserva
-        const offlineBackupPeaks = [
-            { name: "Monte Cimone", lat: 44.1938, lon: 10.6997, ele: 2165 },
-            { name: "Corno alle Scale", lat: 44.1228, lon: 10.8317, ele: 1945 },
-            { name: "Monte Cusna", lat: 44.2883, lon: 10.4014, ele: 2121 },
-            { name: "Monte Venere", lat: 44.2251, lon: 11.2721, ele: 965 },
-            { name: "Monte Adone", lat: 44.3314, lon: 11.3103, ele: 654 },
-            { name: "Monte della Formica", lat: 44.3381, lon: 11.3812, ele: 538 },
-            { name: "Monte Vigese", lat: 44.2381, lon: 11.1091, ele: 1091 },
-            { name: "Colle di San Luca", lat: 44.4792, lon: 11.3142, ele: 300 }
-        ];
 
         window.addEventListener('DOMContentLoaded', () => {
             initSensors();
@@ -180,7 +167,6 @@
             requestAnimationFrame(renderLoop);
         });
 
-        // SLIDER RAGGIO DI RICERCA
         function setupSlider() {
             const slider = document.getElementById('radius-slider');
             const radiusVal = document.getElementById('radius-val');
@@ -201,7 +187,7 @@
             });
         }
 
-        // GEOLOCALIZZAZIONE GPS CON FILTRO DISTANZA
+        // GEOLOCALIZZAZIONE REALE
         function initGPS() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(
@@ -212,36 +198,36 @@
 
                         document.getElementById('v-gps').innerText = `${userLat.toFixed(3)}°, ${userLon.toFixed(3)}°`;
 
-                        // Scarica solo se ci siamo spostati di oltre 500m o se è il primo avvio
                         if (shouldRefetch(userLat, userLon, searchRadiusKm)) {
                             fetchPeaksOnline(userLat, userLon, searchRadiusKm);
                         }
                     },
                     err => {
-                        document.getElementById('v-gps').innerText = "Errore/Assente";
-                        if (activePeaks.length === 0) {
-                            userLat = 44.4949; userLon = 11.3426; userAlt = 54;
-                            processOfflinePeaks(userLat, userLon);
-                        }
+                        document.getElementById('v-gps').innerText = "Attiva il GPS nel telefono";
+                        document.getElementById('v-source').innerText = "GPS Non Disponibile";
+                        activePeaks = [];
+                        document.getElementById('v-peaks').innerText = "0";
                     },
                     { enableHighAccuracy: true, timeout: 10000 }
                 );
+            } else {
+                document.getElementById('v-gps').innerText = "GPS Non Supportato";
             }
         }
 
         function shouldRefetch(lat, lon, radius) {
             if (lastQueryLat === null || lastQueryLon === null || lastQueryRadius !== radius) return true;
             const distMoved = calculateDistance(lastQueryLat, lastQueryLon, lat, lon);
-            return distMoved > 0.5; // Si ricarica solo dopo 500 metri di spostamento
+            return distMoved > 0.5; // Aggiorna solo ogni 500m di spostamento
         }
 
-        // SCARICAMENTO CIME CON TIMEOUT & FALLBACK ROBUSTO
+        // RICERCA REALE OVERPASS API
         async function fetchPeaksOnline(lat, lon, radiusKm, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
 
             const statusSource = document.getElementById('v-source');
-            statusSource.innerText = "Caricamento...";
+            statusSource.innerText = "Download cime...";
 
             lastQueryLat = lat;
             lastQueryLon = lon;
@@ -255,9 +241,8 @@
             const minLon = (lon - lonDelta).toFixed(4);
             const maxLon = (lon + lonDelta).toFixed(4);
 
-            const query = `[out:json][timeout:10];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body;`;
+            const query = `[out:json][timeout:12];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body;`;
             
-            // Server principale + Server mirror di riserva
             const servers = [
                 `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`,
                 `https://overpass.kumi.systems/api/interpreter?data=${encodeURIComponent(query)}`
@@ -266,16 +251,22 @@
             for (let url of servers) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 6000);
+                    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
                     const res = await fetch(url, { signal: controller.signal });
                     clearTimeout(timeoutId);
 
                     if (res.ok) {
                         const data = await res.json();
-                        if (data && data.elements && data.elements.length > 0) {
-                            statusSource.innerText = "OpenStreetMap";
-                            processPeaksData(data.elements, lat, lon);
+                        if (data && data.elements) {
+                            if (data.elements.length > 0) {
+                                statusSource.innerText = "OpenStreetMap (Live)";
+                                processPeaksData(data.elements, lat, lon);
+                            } else {
+                                statusSource.innerText = "Nessuna cima nel raggio";
+                                activePeaks = [];
+                                document.getElementById('v-peaks').innerText = "0";
+                            }
                             isFetching = false;
                             return;
                         }
@@ -283,14 +274,8 @@
                 } catch (e) { }
             }
 
-            // Se la chiamata fallisce ma abbiamo già delle cime caricate, NON azzerarle
             isFetching = false;
-            if (activePeaks.length === 0) {
-                statusSource.innerText = "Dati Locali (Offline)";
-                processOfflinePeaks(lat, lon);
-            } else {
-                statusSource.innerText = "OpenStreetMap (Cached)";
-            }
+            statusSource.innerText = "Errore Rete / Server Bsy";
         }
 
         function processPeaksData(elements, lat, lon) {
@@ -312,27 +297,8 @@
                 return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
             }).filter(p => p !== null);
 
-            finalizePeakList(parsed);
-        }
-
-        function processOfflinePeaks(lat, lon) {
-            let parsed = offlineBackupPeaks.map(p => {
-                const distKm = calculateDistance(lat, lon, p.lat, p.lon);
-                if (distKm > searchRadiusKm) return null;
-
-                const bearing = calculateBearing(lat, lon, p.lat, p.lon);
-                const eleDiffMeters = p.ele - userAlt;
-                const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
-
-                return { name: p.name, ele: p.ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
-            }).filter(p => p !== null);
-
-            finalizePeakList(parsed);
-        }
-
-        function finalizePeakList(peaks) {
-            peaks.sort((a, b) => a.dist - b.dist);
-            activePeaks = peaks.slice(0, 25); // Mantiene le 25 cime più vicine
+            parsed.sort((a, b) => a.dist - b.dist);
+            activePeaks = parsed.slice(0, 30); // Prende le 30 cime più vicine reali
             document.getElementById('v-peaks').innerText = activePeaks.length;
         }
 
@@ -354,7 +320,6 @@
             return (Math.atan2(y, x) * DEG + 360) % 360;
         }
 
-        // CALIBRAZIONE TAP NORD
         async function calibrateAndStartAR() {
             calibratedOffset = currentHeading;
 
@@ -540,7 +505,7 @@
                 }
             });
 
-            // 3. RENDERING ETICHETTE CIME MONTUOSE
+            // 3. RENDERING ETICHETTE CIME REALI
             activePeaks.forEach(peak => {
                 let diffH = peak.bearing - finalHeading;
                 if (diffH > 180) diffH -= 360;
@@ -603,7 +568,7 @@
 
             ctx.restore();
 
-            // MIRINO CENTRALE FISSO SCHERMO
+            // MIRINO CENTRALE FISSO
             ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = 2;
             ctx.beginPath();
