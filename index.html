@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Smart Occlusion & De-Clutter</title>
+    <title>PeakFinder AR - Località & Ruota Aptica</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -67,7 +67,7 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-family: monospace;
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
         }
-        .hud-title { font-weight: bold; font-size: 12px; text-transform: uppercase; color: #fff; width: 100%; border-bottom: 1px solid #06b6d4; padding-bottom: 4px; }
+        .hud-title { font-weight: bold; font-size: 13px; text-transform: uppercase; color: #fff; width: 100%; border-bottom: 1px solid #06b6d4; padding-bottom: 4px; letter-spacing: 0.5px; }
         .val { color: #fff; font-weight: bold; }
 
         .btn-retry {
@@ -81,14 +81,54 @@
             display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 5; 
         }
 
+        /* SLIDER RUOTA 3D GRADUATA CON INCISO MECCANICO */
         .slider-box {
-            width: 100%; max-width: 380px; background: rgba(15, 23, 42, 0.92);
-            border: 1px solid #06b6d4; padding: 10px 16px; border-radius: 20px;
+            width: 100%; max-width: 380px; background: rgba(15, 23, 42, 0.95);
+            border: 1px solid #06b6d4; padding: 12px 16px; border-radius: 20px;
             text-align: center; font-size: 12px; color: #fff;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.7);
         }
 
-        input[type=range] { width: 100%; height: 32px; accent-color: #06b6d4; margin-top: 4px; }
+        .wheel-container {
+            position: relative;
+            width: 100%; height: 42px; margin-top: 8px;
+            background: linear-gradient(180deg, #020617 0%, #1e293b 50%, #020617 100%);
+            border: 1px solid #06b6d4; border-radius: 12px;
+            box-shadow: inset 0 4px 10px rgba(0,0,0,0.9), 0 0 12px rgba(6, 182, 212, 0.2);
+            overflow: hidden; display: flex; align-items: center; justify-content: center;
+        }
+
+        /* Tacche verticali dell'ingranaggio */
+        .wheel-ticks {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none; opacity: 0.4;
+            background: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 10px,
+                #06b6d4 10px,
+                #06b6d4 12px
+            );
+        }
+
+        /* Mirino centrale dell'ingranaggio */
+        .wheel-center-line {
+            position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
+            background: #ef4444; box-shadow: 0 0 8px #ef4444;
+            pointer-events: none; z-index: 2;
+        }
+
+        input[type=range].wheel-input {
+            width: 100%; height: 100%; appearance: none; -webkit-appearance: none;
+            background: transparent; cursor: pointer; z-index: 3; margin: 0;
+        }
+
+        input[type=range].wheel-input::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 26px; height: 36px;
+            background: linear-gradient(90deg, #0284c7, #38bdf8, #0284c7);
+            border: 1px solid #fff; border-radius: 4px;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+        }
 
         .btn-primary { 
             width: 100%; max-width: 340px; background: #06b6d4; color: #0b0f19; 
@@ -109,8 +149,8 @@
     <!-- FASE 1: CALIBRAZIONE TAP NORD -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>PEAKFINDER AR - SMART OCUSION</h1>
-            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per scaricare la mappa 3D del territorio.</p>
+            <h1>PEAKFINDER AR - LOCALITÀ & APTICO</h1>
+            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR.</p>
         </div>
 
         <div class="calib-body">
@@ -127,23 +167,29 @@
     <video id="camera-feed" autoplay playsinline muted class="hidden"></video>
     <canvas id="ar-canvas" class="hidden"></canvas>
 
-    <!-- Telemetria AR -->
+    <!-- Telemetria AR con Titolo Località GPS -->
     <div id="hud-telemetry" class="hud-overlay hidden">
-        <div class="hud-title">PEAKFINDER AR - SMART FILTER</div>
+        <div id="hud-location-title" class="hud-title">RILEVAMENTO POSIZIONE...</div>
         <div>GPS: <span id="v-gps" class="val">In attesa...</span></div>
         <div>Etichette: <span id="v-labels" class="val">0</span> / <span id="v-peaks" class="val">0</span> (Visibili)</div>
         <div>Banda: <span id="v-band" class="val">0 - 15 km</span></div>
         <div>Fonte: <span id="v-source" class="val">In attesa...</span> <button id="retry-btn" class="btn-retry hidden" onclick="manualRetryFetch()">Riprova</button></div>
     </div>
 
-    <!-- Controlli AR con Slider Profondità -->
+    <!-- Controlli AR con Ingranaggio 3D & Vibrazione -->
     <div id="ar-controls" class="controls-bar hidden">
         <div class="slider-box">
             <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">10 km</b></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
-                Visibili tra <span id="dist-min" style="color:#fff;">5</span> e <span id="dist-max" style="color:#fff;">15</span> km (Buffer ±5 km)
+                Filtro tra <span id="dist-min" style="color:#fff;">5</span> e <span id="dist-max" style="color:#fff;">15</span> km (Buffer ±5 km)
             </div>
-            <input type="range" id="depth-slider" min="5" max="35" step="1" value="10">
+            
+            <!-- Ruota Ingranaggio Profilata -->
+            <div class="wheel-container">
+                <div class="wheel-ticks"></div>
+                <div class="wheel-center-line"></div>
+                <input type="range" id="depth-slider" class="wheel-input" min="5" max="35" step="1" value="10">
+            </div>
         </div>
         <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
     </div>
@@ -165,6 +211,7 @@
         // GPS e Dati Cime
         let userLat = null, userLon = null, userAlt = 0;
         let targetDistanceKm = 10;
+        let lastVibratedVal = 10;
         
         let allDownloadedPeaks = [];
         let activePeaks = [];
@@ -175,17 +222,28 @@
         window.addEventListener('DOMContentLoaded', () => {
             initSensors();
             initGPS();
-            setupSlider();
+            setupSliderWithHaptics();
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
             requestAnimationFrame(renderLoop);
         });
 
-        function setupSlider() {
+        // SLIDER APTICO 3D (Simula lo scatto dell'ingranaggio)
+        function setupSliderWithHaptics() {
             const slider = document.getElementById('depth-slider');
 
             slider.addEventListener('input', () => {
-                targetDistanceKm = parseInt(slider.value);
+                const currentVal = parseInt(slider.value);
+                
+                // Vibrazione aptica ad ogni cambio di chilometro
+                if (currentVal !== lastVibratedVal) {
+                    lastVibratedVal = currentVal;
+                    if ('vibrate' in navigator) {
+                        navigator.vibrate(8); // Impulso breve a scatto
+                    }
+                }
+
+                targetDistanceKm = currentVal;
                 updateBufferUIAndFilter();
             });
         }
@@ -200,40 +258,12 @@
             document.getElementById('v-band').innerText = `${minDist} - ${maxDist} km`;
 
             if (allDownloadedPeaks.length > 0) {
-                // Filtra solo cime non occluse e comprese nel buffer di distanza
                 activePeaks = allDownloadedPeaks.filter(p => !p.isOccluded && p.dist >= minDist && p.dist <= maxDist);
                 document.getElementById('v-peaks').innerText = activePeaks.length;
             }
         }
 
-        // 1. ALGORITMO DI OCCLUSIONE GEOMETRICA 3D (Cime Nascoste da Rilievi in Primo Piano)
-        function applyOcclusionCulling(peaks) {
-            // Ordina dal più vicino al più lontano
-            peaks.sort((a, b) => a.dist - b.dist);
-
-            for (let i = 0; i < peaks.length; i++) {
-                let p = peaks[i];
-                p.isOccluded = false;
-
-                // Confronta la cima corrente con tutte le cime più vicine già elaborate
-                for (let j = 0; j < i; j++) {
-                    let closer = peaks[j];
-
-                    let diffBearing = Math.abs(p.bearing - closer.bearing);
-                    if (diffBearing > 180) diffBearing = 360 - diffBearing;
-
-                    // Se la cima lontana è nell'angolo di copertura (±2°) di una cima più vicina
-                    if (diffBearing < 2.0) {
-                        // Se la cima vicina ha un angolo di elevazione uguale o superiore, nasconde quella dietro
-                        if (closer.elevationAngle >= p.elevationAngle - 0.2) {
-                            p.isOccluded = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
+        // GEOLOCALIZZAZIONE GPS & REVERSE GEOCODING (Nome Comune)
         function initGPS() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(
@@ -244,6 +274,9 @@
 
                         document.getElementById('v-gps').innerText = `${userLat.toFixed(3)}°, ${userLon.toFixed(3)}°`;
 
+                        // Ottiene il nome della località corrente
+                        fetchLocationName(userLat, userLon);
+
                         if (shouldRefetchRadial(userLat, userLon)) {
                             fetchPeaksMultiEngine(userLat, userLon);
                         }
@@ -251,9 +284,24 @@
                     err => {
                         document.getElementById('v-gps').innerText = "Attiva il GPS";
                         document.getElementById('v-source').innerText = "GPS Assente";
+                        document.getElementById('hud-location-title').innerText = "POSIZIONE GPS NON DISPONIBILE";
                     },
                     { enableHighAccuracy: true, timeout: 10000 }
                 );
+            }
+        }
+
+        // REVERSE GEOCODING GRATUITO ED ISTANTANEO
+        async function fetchLocationName(lat, lon) {
+            try {
+                const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=it`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const locName = data.locality || data.city || data.town || data.principalSubdivision || "Belluno";
+                    document.getElementById('hud-location-title').innerText = locName.toUpperCase();
+                }
+            } catch (e) {
+                document.getElementById('hud-location-title').innerText = "POSIZIONE GPS";
             }
         }
 
@@ -266,6 +314,30 @@
         function manualRetryFetch() {
             if (userLat !== null && userLon !== null) {
                 fetchPeaksMultiEngine(userLat, userLon, true);
+            }
+        }
+
+        // ALGORITMO DI OCCLUSIONE GEOMETRICA 3D
+        function applyOcclusionCulling(peaks) {
+            peaks.sort((a, b) => a.dist - b.dist);
+
+            for (let i = 0; i < peaks.length; i++) {
+                let p = peaks[i];
+                p.isOccluded = false;
+
+                for (let j = 0; j < i; j++) {
+                    let closer = peaks[j];
+
+                    let diffBearing = Math.abs(p.bearing - closer.bearing);
+                    if (diffBearing > 180) diffBearing = 360 - diffBearing;
+
+                    if (diffBearing < 2.0) {
+                        if (closer.elevationAngle >= p.elevationAngle - 0.2) {
+                            p.isOccluded = true;
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -306,7 +378,7 @@
                 }
             } catch (e) { }
 
-            // Fallback Wikipedia GeoData API
+            // Fallback Wikipedia
             statusSource.innerText = "Wikipedia Live...";
             const wikiUrl = `https://it.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=${FETCH_RADIAL_METERS}&gslimit=50&format=json&origin=*`;
 
@@ -494,7 +566,7 @@
             requestAnimationFrame(renderLoop);
         }
 
-        // 2. CICLO DI RENDERING CON DE-CLUTTERING 2D SULLO SCHERMO
+        // RENDERING ETICHETTE CON ALTEZZA ASTA PROPORZIONALE ALL'ALTITUDINE REALE
         function renderARHUD(attitude) {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
@@ -578,8 +650,7 @@
                 }
             });
 
-            // 3. RENDERING ETICHETTE CIME CON PRIORITÀ D'ALTITUDINE E ANTI-SOVRAPPOSIZIONE
-            // Seleziona solo le cime nell'inquadratura
+            // 3. RENDERING ETICHETTE (ALTEZZA ASTA SCALATA IN BASE ALL'ALTITUDINE REALE)
             let visiblePeaks = activePeaks.filter(peak => {
                 let diffH = peak.bearing - finalHeading;
                 if (diffH > 180) diffH -= 360;
@@ -587,7 +658,7 @@
                 return Math.abs(diffH) <= fovH / 2;
             });
 
-            // Ordina per altitudine decrescente: le cime più alte (più importanti) hanno priorità
+            // Priorità alle cime più alte
             visiblePeaks.sort((a, b) => b.ele - a.ele);
 
             let placedBoxes = [];
@@ -609,14 +680,17 @@
                     peak.smoothY += (targetY - peak.smoothY) * 0.15;
                 }
 
+                // L'ALTEZZA DELL'ASTA VARIA IN BASE ALLA QUOTA REALE (da 15px fino a 55px per vette > 3000m)
+                const stemLength = 15 + Math.min(40, (peak.ele / 3500) * 40);
+
                 const boxW = 120;
                 const boxH = 32;
                 const boxX = peak.smoothX - boxW / 2;
-                const boxY = peak.smoothY - boxH - 8;
+                const boxY = peak.smoothY - stemLength - boxH;
 
                 const currentBox = { x1: boxX, y1: boxY, x2: boxX + boxW, y2: boxY + boxH };
 
-                // Controlla se la nuova etichetta collide con una già inserita (a priorità più alta)
+                // Anti-sovrapposizione 2D
                 let isColliding = placedBoxes.some(b => 
                     !(currentBox.x2 < b.x1 || currentBox.x1 > b.x2 || currentBox.y2 < b.y1 || currentBox.y1 > b.y2)
                 );
@@ -625,29 +699,29 @@
                     placedBoxes.push(currentBox);
                     renderedLabelsCount++;
 
-                    // Pallino sulla cima
+                    // Pallino rosso sulla cima
                     ctx.fillStyle = "#ef4444";
                     ctx.beginPath();
                     ctx.arc(peak.smoothX, peak.smoothY, 5, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // Linea verticale dall'orizzonte alla cima
-                    ctx.strokeStyle = "rgba(239, 68, 68, 0.6)";
-                    ctx.lineWidth = 1;
+                    // Asta verticale proporzionale alla quota della montagna
+                    ctx.strokeStyle = "rgba(239, 68, 68, 0.7)";
+                    ctx.lineWidth = 1.5;
                     ctx.beginPath();
-                    ctx.moveTo(peak.smoothX, horizonY);
-                    ctx.lineTo(peak.smoothX, peak.smoothY);
+                    ctx.moveTo(peak.smoothX, peak.smoothY);
+                    ctx.lineTo(peak.smoothX, boxY + boxH);
                     ctx.stroke();
 
-                    // Box Etichetta
-                    ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+                    // Riquadro Etichetta
+                    ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
                     ctx.strokeStyle = "#ef4444";
                     ctx.lineWidth = 1.5;
 
                     ctx.fillRect(boxX, boxY, boxW, boxH);
                     ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-                    // Testo Nome & Quota/Distanza
+                    // Testi Nome & Quota/Distanza
                     ctx.fillStyle = "#ffffff";
                     ctx.font = "bold 11px system-ui, sans-serif";
                     ctx.textAlign = "center";
@@ -658,7 +732,7 @@
                     ctx.font = "10px monospace";
                     ctx.fillText(`${peak.ele}m | ${peak.dist.toFixed(1)}km`, peak.smoothX, boxY + 26);
                 } else {
-                    // Cima secondaria sovrapposta: disegna solo un pallino discreto senza etichetta di testo
+                    // Cima secondaria nascosta: mostra solo punto guida
                     ctx.fillStyle = "rgba(239, 68, 68, 0.4)";
                     ctx.beginPath();
                     ctx.arc(peak.smoothX, peak.smoothY, 3, 0, Math.PI * 2);
