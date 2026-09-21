@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Gear Slider & Ultra-Reliable Network</title>
+    <title>PeakFinder AR - Clean UI & Wikidata Engine</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -81,56 +81,16 @@
             display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 5; 
         }
 
-        /* INGRANAGGIO MECCANICO 3D (VISTA DI PROFILO) */
-        .gear-panel {
-            width: 100%; max-width: 380px; background: rgba(15, 23, 42, 0.95);
+        /* SLIDER LINARE PULITO (RIPRISTINATO) */
+        .slider-box {
+            width: 100%; max-width: 380px; background: rgba(15, 23, 42, 0.92);
             border: 1px solid #06b6d4; padding: 12px 16px; border-radius: 20px;
             text-align: center; font-size: 12px; color: #fff;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.6);
         }
 
-        .gear-wheel-wrapper {
-            position: relative; width: 100%; height: 48px; margin-top: 10px;
-            background: linear-gradient(180deg, #020617 0%, #334155 45%, #64748b 50%, #334155 55%, #020617 100%);
-            border: 2px solid #06b6d4; border-radius: 12px;
-            box-shadow: inset 0 6px 12px rgba(0,0,0,0.9), 0 0 15px rgba(6, 182, 212, 0.3);
-            overflow: hidden; display: flex; align-items: center; justify-content: center;
-        }
-
-        /* Denti dell'ingranaggio che ruotano di profilo */
-        .gear-teeth-pattern {
-            position: absolute; top: 0; bottom: 0; left: -100px; right: -100px;
-            pointer-events: none; opacity: 0.75;
-            background: repeating-linear-gradient(
-                90deg,
-                rgba(15, 23, 42, 0.9) 0px,
-                rgba(15, 23, 42, 0.9) 8px,
-                #06b6d4 8px,
-                #e0f2fe 12px,
-                #06b6d4 16px,
-                rgba(15, 23, 42, 0.9) 16px,
-                rgba(15, 23, 42, 0.9) 24px
-            );
-            transition: transform 0.05s ease-out;
-        }
-
-        /* Mirino / Indice centrale rosso fisso dell'ingranaggio */
-        .gear-pointer {
-            position: absolute; top: 0; bottom: 0; left: 50%; width: 3px;
-            background: #ef4444; box-shadow: 0 0 10px #ef4444;
-            transform: translateX(-50%); pointer-events: none; z-index: 3;
-        }
-
-        input[type=range].gear-slider {
-            width: 100%; height: 100%; appearance: none; -webkit-appearance: none;
-            background: transparent; cursor: pointer; z-index: 4; margin: 0;
-        }
-
-        input[type=range].gear-slider::-webkit-slider-thumb {
-            -webkit-appearance: none; width: 32px; height: 42px;
-            background: linear-gradient(180deg, #38bdf8 0%, #0284c7 50%, #0369a1 100%);
-            border: 1px solid #ffffff; border-radius: 6px;
-            box-shadow: 0 0 12px rgba(56, 189, 248, 0.9);
+        input[type=range] { 
+            width: 100%; height: 32px; accent-color: #06b6d4; margin-top: 6px; cursor: pointer; 
         }
 
         .btn-primary { 
@@ -152,7 +112,7 @@
     <!-- FASE 1: CALIBRAZIONE TAP NORD -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>PEAKFINDER AR - MULTI-SERVER & GEAR</h1>
+            <h1>PEAKFINDER AR - REALE LIVE</h1>
             <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR.</p>
         </div>
 
@@ -170,7 +130,7 @@
     <video id="camera-feed" autoplay playsinline muted class="hidden"></video>
     <canvas id="ar-canvas" class="hidden"></canvas>
 
-    <!-- Telemetria AR con Titolo Località GPS -->
+    <!-- Telemetria AR -->
     <div id="hud-telemetry" class="hud-overlay hidden">
         <div id="hud-location-title" class="hud-title">RILEVAMENTO POSIZIONE...</div>
         <div>GPS: <span id="v-gps" class="val">In attesa...</span></div>
@@ -179,20 +139,14 @@
         <div>Fonte: <span id="v-source" class="val">In attesa...</span> <button id="retry-btn" class="btn-retry hidden" onclick="manualRetryFetch()">Riprova</button></div>
     </div>
 
-    <!-- Controlli AR con Ingranaggio 3D & Vibrazione -->
+    <!-- Controlli AR con Slider Lineare Ripristinato -->
     <div id="ar-controls" class="controls-bar hidden">
-        <div class="gear-panel">
+        <div class="slider-box">
             <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">10 km</b></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
-                Filtro tra <span id="dist-min" style="color:#fff;">5</span> e <span id="dist-max" style="color:#fff;">15</span> km (Buffer ±5 km)
+                Visibili tra <span id="dist-min" style="color:#fff;">5</span> e <span id="dist-max" style="color:#fff;">15</span> km (Buffer ±5 km)
             </div>
-            
-            <!-- Ingranaggio di Profilo -->
-            <div class="gear-wheel-wrapper">
-                <div id="gear-teeth" class="gear-teeth-pattern"></div>
-                <div class="gear-pointer"></div>
-                <input type="range" id="depth-slider" class="gear-slider" min="5" max="35" step="1" value="10">
-            </div>
+            <input type="range" id="depth-slider" min="5" max="35" step="1" value="10">
         </div>
         <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
     </div>
@@ -202,7 +156,7 @@
         const DEG = 180 / Math.PI;
 
         const BUFFER_DELTA_KM = 5;
-        const FETCH_RADIAL_METERS = 25000;
+        const FETCH_RADIAL_KM = 25; // 25 km di raggio
 
         // Sensori & Assetto
         let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
@@ -214,7 +168,6 @@
         // GPS e Dati Cime
         let userLat = null, userLon = null, userAlt = 0;
         let targetDistanceKm = 10;
-        let lastVibratedVal = 10;
         
         let allDownloadedPeaks = [];
         let activePeaks = [];
@@ -222,46 +175,21 @@
         let lastQueryLat = null, lastQueryLon = null;
         let isFetching = false;
 
-        // LISTA SERVER ROBUSTI CON FALLBACK MULTIPLO
-        const serverEndpoints = [
-            { name: "Overpass (Main)", url: "https://overpass-api.de/api/interpreter", type: "overpass" },
-            { name: "Overpass (Kumi)", url: "https://overpass.kumi.systems/api/interpreter", type: "overpass" },
-            { name: "Overpass (Swiss)", url: "https://overpass.osm.ch/api/interpreter", type: "overpass" },
-            { name: "Overpass (Taiwan)", url: "https://overpass.nchc.org.tw/api/interpreter", type: "overpass" },
-            { name: "Overpass (LZ4)", url: "https://lz4.overpass-api.de/api/interpreter", type: "overpass" },
-            { name: "Wikipedia API", url: "https://it.wikipedia.org/w/api.php", type: "wikipedia" }
-        ];
-
         window.addEventListener('DOMContentLoaded', () => {
             initSensors();
             initGPS();
-            setupGearSlider();
+            setupSlider();
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
             requestAnimationFrame(renderLoop);
         });
 
-        // INGRANAGGIO 3D CHE GIRA DI PROFILO + VIBRAZIONE APTICA
-        function setupGearSlider() {
+        // SLIDER LINEARE RIPRISTINATO
+        function setupSlider() {
             const slider = document.getElementById('depth-slider');
-            const teeth = document.getElementById('gear-teeth');
 
             slider.addEventListener('input', () => {
-                const currentVal = parseInt(slider.value);
-                
-                // Animazione scorrimento dei denti dell'ingranaggio
-                const offsetPixels = -(currentVal * 12);
-                teeth.style.transform = `translateX(${offsetPixels}px)`;
-
-                // Vibrazione ad ogni scatto di chilometro
-                if (currentVal !== lastVibratedVal) {
-                    lastVibratedVal = currentVal;
-                    if ('vibrate' in navigator) {
-                        navigator.vibrate(10);
-                    }
-                }
-
-                targetDistanceKm = currentVal;
+                targetDistanceKm = parseInt(slider.value);
                 updateBufferUIAndFilter();
             });
         }
@@ -295,7 +223,7 @@
                         fetchLocationName(userLat, userLon);
 
                         if (shouldRefetchRadial(userLat, userLon)) {
-                            fetchPeaksReliablePipeline(userLat, userLon);
+                            fetchPeaksRobust(userLat, userLon);
                         }
                     },
                     err => {
@@ -329,7 +257,7 @@
 
         function manualRetryFetch() {
             if (userLat !== null && userLon !== null) {
-                fetchPeaksReliablePipeline(userLat, userLon, true);
+                fetchPeaksRobust(userLat, userLon, true);
             }
         }
 
@@ -357,8 +285,8 @@
             }
         }
 
-        // MOTORINO DI CONNESSIONE AD ALTA AFFIDABILITÀ (6 SERVER SEQUENZIALI)
-        async function fetchPeaksReliablePipeline(lat, lon, force = false) {
+        // MOTORINO RETE ROBUSTO: OVERPASS (POST FORMATTATO CORRETTAMENTE) + WIKIDATA SPARQL
+        async function fetchPeaksRobust(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
 
@@ -369,71 +297,100 @@
             lastQueryLat = lat;
             lastQueryLon = lon;
 
-            const overpassQuery = `[out:json][timeout:5];node["natural"="peak"]["name"](around:${FETCH_RADIAL_METERS},${lat},${lon});out body;`;
+            // 1. TENTATIVO CON OVERPASS API (Formattato via URLSearchParams)
+            statusSource.innerText = "Overpass API...";
+            const overpassServers = [
+                "https://overpass-api.de/api/interpreter",
+                "https://overpass.kumi.systems/api/interpreter"
+            ];
 
-            for (let i = 0; i < serverEndpoints.length; i++) {
-                const srv = serverEndpoints[i];
-                statusSource.innerText = `${srv.name}...`;
+            const ql = `[out:json][timeout:6];node["natural"="peak"]["name"](around:${FETCH_RADIAL_KM * 1000},${lat},${lon});out body;`;
 
+            for (let url of overpassServers) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 3500); // Max 3.5s per tentativo
+                    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-                    let res = null;
+                    const params = new URLSearchParams();
+                    params.append('data', ql);
 
-                    if (srv.type === "overpass") {
-                        // Tenta POST prima, se fallisce tenta GET sullo stesso server
-                        try {
-                            res = await fetch(srv.url, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                                body: "data=" + encodeURIComponent(overpassQuery),
-                                signal: controller.signal
-                            });
-                        } catch (errPost) {
-                            res = await fetch(`${srv.url}?data=${encodeURIComponent(overpassQuery)}`, {
-                                signal: controller.signal
-                            });
-                        }
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        body: params,
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
 
-                        clearTimeout(timeoutId);
-
-                        if (res && res.ok) {
-                            const data = await res.json();
-                            if (data && data.elements && data.elements.length > 0) {
-                                statusSource.innerText = `${srv.name} (Live)`;
-                                processOverpassData(data.elements, lat, lon);
-                                isFetching = false;
-                                return;
-                            }
-                        }
-                    } else if (srv.type === "wikipedia") {
-                        const wikiUrl = `${srv.url}?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=${FETCH_RADIAL_METERS}&gslimit=50&format=json&origin=*`;
-                        res = await fetch(wikiUrl, { signal: controller.signal });
-                        clearTimeout(timeoutId);
-
-                        if (res && res.ok) {
-                            const data = await res.json();
-                            if (data && data.query && data.query.geosearch && data.query.geosearch.length > 0) {
-                                statusSource.innerText = "Wikipedia (Live)";
-                                processWikipediaData(data.query.geosearch, lat, lon);
-                                isFetching = false;
-                                return;
-                            }
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.elements && data.elements.length > 0) {
+                            statusSource.innerText = "OpenStreetMap";
+                            processOverpassData(data.elements, lat, lon);
+                            isFetching = false;
+                            return;
                         }
                     }
-                } catch (e) {
-                    // Passa immediatamente al server successivo in caso di errore o timeout
-                }
+                } catch (e) { }
             }
 
-            // Se tutti e 6 i server falliscono, imposta l'auto-retry dopo 6 secondi
+            // 2. FALLBACK SU WIKIDATA SPARQL ENGINE (Zero blocchi CORS, ultraveloce e specifico per cime montuose)
+            statusSource.innerText = "Wikidata SPARQL...";
+            const sparqlQuery = `
+                SELECT ?item ?itemLabel ?lat ?lon ?elevation WHERE {
+                  SERVICE wikibase:around {
+                      ?item wdt:P625 ?location .
+                      bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral .
+                      bd:serviceParam wikibase:radius "${FETCH_RADIAL_KM}" .
+                  }
+                  ?item wdt:P31/wdt:279* wd:Q8502 .
+                  ?item p:P625/psv:P625 ?locNode .
+                  ?locNode wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon .
+                  OPTIONAL { ?item wdt:P2044 ?elevation . }
+                  SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". }
+                } LIMIT 100
+            `;
+
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+                const wikiUrl = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparqlQuery)}&format=json`;
+                const res = await fetch(wikiUrl, {
+                    headers: { 'Accept': 'application/sparql-results+json' },
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.results && data.results.bindings && data.results.bindings.length > 0) {
+                        statusSource.innerText = "Wikidata (Live)";
+                        processWikidataData(data.results.bindings, lat, lon);
+                        isFetching = false;
+                        return;
+                    }
+                }
+            } catch (e) { }
+
+            // 3. FALLBACK FINALE SU WIKIPEDIA GEODATA API
+            statusSource.innerText = "Wikipedia API...";
+            try {
+                const wikiGeoUrl = `https://it.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=${FETCH_RADIAL_KM * 1000}&gslimit=50&format=json&origin=*`;
+                const res = await fetch(wikiGeoUrl);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.query && data.query.geosearch && data.query.geosearch.length > 0) {
+                        statusSource.innerText = "Wikipedia";
+                        processWikipediaData(data.query.geosearch, lat, lon);
+                        isFetching = false;
+                        return;
+                    }
+                }
+            } catch (e) { }
+
             isFetching = false;
-            statusSource.innerText = "Rete Occupata (Auto-Retry)";
+            statusSource.innerText = "Errore Connessione";
             retryBtn.classList.remove('hidden');
-            setTimeout(() => {
-                if (allDownloadedPeaks.length === 0) fetchPeaksReliablePipeline(lat, lon, true);
-            }, 6000);
         }
 
         function processOverpassData(elements, lat, lon) {
@@ -450,6 +407,26 @@
 
                 return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
             }).filter(p => p !== null);
+
+            applyOcclusionCulling(parsed);
+            allDownloadedPeaks = parsed;
+            updateBufferUIAndFilter();
+        }
+
+        function processWikidataData(bindings, lat, lon) {
+            let parsed = bindings.map(b => {
+                const name = b.itemLabel ? b.itemLabel.value : "Cima Senza Nome";
+                const pLat = parseFloat(b.lat.value);
+                const pLon = parseFloat(b.lon.value);
+                const ele = b.elevation ? parseFloat(b.elevation.value) : 1500;
+
+                const distKm = calculateDistance(lat, lon, pLat, pLon);
+                const bearing = calculateBearing(lat, lon, pLat, pLon);
+                const eleDiffMeters = ele - userAlt;
+                const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
+
+                return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
+            });
 
             applyOcclusionCulling(parsed);
             allDownloadedPeaks = parsed;
