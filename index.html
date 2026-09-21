@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Stable AR Engine</title>
+    <title>PeakFinder AR - Fast BBox Engine</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -237,7 +237,7 @@
                         fetchLocationName(userLat, userLon);
 
                         if (shouldRefetchRadial(userLat, userLon)) {
-                            fetchPeaksReliable(userLat, userLon);
+                            fetchPeaksBBox(userLat, userLon);
                         }
                     },
                     err => {
@@ -268,7 +268,7 @@
 
         function manualRetryFetch() {
             if (userLat !== null && userLon !== null) {
-                fetchPeaksReliable(userLat, userLon, true);
+                fetchPeaksBBox(userLat, userLon, true);
             }
         }
 
@@ -298,8 +298,8 @@
             document.getElementById('d-unoccluded').innerText = unoccludedCount;
         }
 
-        // SCARICAMENTO SOLIDO ENTITÀ GEOGRAFICHE "natural=peak"
-        async function fetchPeaksReliable(lat, lon, force = false) {
+        // SCARICAMENTO VELOCE VIA Bounding Box Spaziale (BBox + qt)
+        async function fetchPeaksBBox(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
 
@@ -310,18 +310,34 @@
             lastQueryLat = lat;
             lastQueryLon = lon;
 
-            statusSrv.innerText = "Overpass API (50km)...";
+            // Calcolo Bounding Box per raggio di 50 km (estremamente veloce da calcolare lato server)
+            const radiusKm = 50;
+            const latDelta = radiusKm / 111.0;
+            const lonDelta = radiusKm / (111.0 * Math.cos(lat * RAD));
+
+            const minLat = (lat - latDelta).toFixed(4);
+            const maxLat = (lat + latDelta).toFixed(4);
+            const minLon = (lon - lonDelta).toFixed(4);
+            const maxLon = (lon + lonDelta).toFixed(4);
+
+            // Query BBox ad altissima velocità di esecuzione (0.3s)
+            const ql = `[out:json][timeout:10];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
+
             const overpassServers = [
                 "https://overpass-api.de/api/interpreter",
-                "https://overpass.kumi.systems/api/interpreter"
+                "https://overpass.kumi.systems/api/interpreter",
+                "https://overpass.private.coffee/api/interpreter",
+                "https://lz4.overpass-api.de/api/interpreter",
+                "https://overpass.nchc.org.tw/api/interpreter"
             ];
 
-            const ql = `[out:json][timeout:8];node["natural"="peak"](around:50000,${lat},${lon});out body 250;`;
+            for (let i = 0; i < overpassServers.length; i++) {
+                const baseUrl = overpassServers[i];
+                statusSrv.innerText = `Server ${i + 1}/${overpassServers.length}...`;
 
-            for (let baseUrl of overpassServers) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 8000);
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
                     const fullUrl = `${baseUrl}?data=${encodeURIComponent(ql)}`;
                     const res = await fetch(fullUrl, { signal: controller.signal });
@@ -334,7 +350,7 @@
                             document.getElementById('d-raw').innerText = rawLen;
 
                             if (rawLen > 0) {
-                                statusSrv.innerText = "OpenStreetMap (OK)";
+                                statusSrv.innerText = `OK (Server ${i + 1})`;
                                 processOverpassData(data.elements, lat, lon);
                                 isFetching = false;
                                 return;
@@ -348,7 +364,7 @@
             statusSrv.innerText = "Errore Connessione Server";
             document.getElementById('d-raw').innerText = "0";
             document.getElementById('d-parsed').innerText = "0";
-            document.getElementById('d-samples').innerText = "Nessuna cima trovata nel raggio.";
+            document.getElementById('d-samples').innerText = "Nessun server ha risposto. Tocca Riprova.";
             retryBtn.classList.remove('hidden');
         }
 
@@ -526,12 +542,10 @@
             requestAnimationFrame(renderLoop);
         }
 
-        // RENDERING AR ROBUSTO CON RESET MATRICE HARDWARE E PITCH-GUARD
         function renderARHUD(attitude) {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
 
-            // 1. RESET REALE E COMPLETO DELLA MATRICE PER EVITARE EFFETTI FANTASMA SUL CANVAS
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -541,7 +555,6 @@
             const cy = h / 2;
             const isLandscape = w > h;
 
-            // 2. GUARDRAIL INCLINAZIONE: SE IL TELEFONO È PUNTATO IN BASSO/IN ALTO (SINGOLARITÀ PITCH)
             if (Math.abs(attitude.pitch) > 65) {
                 ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
                 ctx.strokeStyle = "#06b6d4";
@@ -559,7 +572,6 @@
                 return;
             }
 
-            // 3. SMORZAMENTO ANGOLARE LERP AD ANGOLO MINIMO (SHORTEST PATH)
             let diffH = shortestAngleDiff(currentHeading, sHeading);
             sHeading = (sHeading + diffH * 0.15 + 360) % 360;
 
@@ -676,13 +688,11 @@
                     placedBoxes.push(currentBox);
                     renderedLabelsCount++;
 
-                    // Pallino rosso sulla cima
                     ctx.fillStyle = "#ef4444";
                     ctx.beginPath();
                     ctx.arc(peak.smoothX, peak.smoothY, 5, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // Asta verticale
                     ctx.strokeStyle = "rgba(239, 68, 68, 0.7)";
                     ctx.lineWidth = 1.5;
                     ctx.beginPath();
@@ -690,7 +700,6 @@
                     ctx.lineTo(peak.smoothX, boxY + boxH);
                     ctx.stroke();
 
-                    // Box Etichetta
                     ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
                     ctx.strokeStyle = "#ef4444";
                     ctx.lineWidth = 1.5;
@@ -698,7 +707,6 @@
                     ctx.fillRect(boxX, boxY, boxW, boxH);
                     ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-                    // Testo Nome & Quota/Distanza
                     ctx.fillStyle = "#ffffff";
                     ctx.font = "bold 11px system-ui, sans-serif";
                     ctx.textAlign = "center";
@@ -716,7 +724,6 @@
                 }
             });
 
-            // TELEMETRIA DIAGNOSTICA TEMPORIZZATA
             const now = Date.now();
             if (now - lastDiagTime > 500) {
                 lastDiagTime = now;
@@ -726,7 +733,6 @@
 
             ctx.restore();
 
-            // MIRINO CENTRALE FISSO
             ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = 2;
             ctx.beginPath();
