@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - v2.5.0 Stable Compass</title>
+    <title>PeakFinder AR - v2.6.0 Debug Terminal</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -13,12 +13,11 @@
 
         .hidden { display: none !important; }
 
-        /* FASE 1: CALIBRAZIONE TAP & VERSIONE */
+        /* FASE 1: CALIBRAZIONE TAP */
         .calib-container { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             display: flex; flex-direction: column; justify-content: space-between; 
-            padding: 30px 20px; z-index: 20; background: #0b0f19; 
-            cursor: pointer; text-align: center;
+            padding: 30px 20px; z-index: 30; background: #0b0f19; text-align: center;
         }
 
         .calib-header { margin-top: 20px; }
@@ -26,487 +25,372 @@
         .calib-header p { color: #94a3b8; font-size: 14px; margin-top: 10px; line-height: 1.5; }
 
         .version-tag {
-            display: inline-block;
-            background: rgba(6, 182, 212, 0.15);
-            border: 1px solid #06b6d4;
-            color: #06b6d4;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: bold;
-            margin-top: 8px;
-            letter-spacing: 1px;
+            display: inline-block; background: rgba(6, 182, 212, 0.15); border: 1px solid #06b6d4;
+            color: #06b6d4; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: bold;
+            margin-top: 8px; letter-spacing: 1px;
         }
 
-        .calib-body { 
-            display: flex; flex-direction: column; align-items: center; justify-content: center; 
-            margin: auto 0; width: 100%; 
-        }
-
+        .calib-body { display: flex; flex-direction: column; align-items: center; justify-content: center; margin: auto 0; }
         .fixed-arrow-box {
             width: 180px; height: 180px; border: 3px dashed #06b6d4; border-radius: 50%;
             position: relative; display: flex; align-items: center; justify-content: center;
-            background: #0f172a; box-shadow: 0 0 40px rgba(6, 182, 212, 0.15);
-            margin-bottom: 20px;
+            background: #0f172a; box-shadow: 0 0 40px rgba(6, 182, 212, 0.15); margin-bottom: 20px;
         }
-
-        .fixed-needle {
-            width: 10px; height: 100px; background: #ef4444; position: absolute;
-            top: 20px; border-radius: 5px;
-        }
+        .fixed-needle { width: 10px; height: 100px; background: #ef4444; position: absolute; top: 20px; border-radius: 5px; }
         .fixed-needle::before {
             content: ''; position: absolute; top: -14px; left: -10px;
-            border-left: 15px solid transparent; border-right: 15px solid transparent;
-            border-bottom: 22px solid #ef4444;
+            border-left: 15px solid transparent; border-right: 15px solid transparent; border-bottom: 22px solid #ef4444;
         }
 
-        .tap-hint {
-            font-size: 13px; color: #06b6d4; letter-spacing: 1px;
-            font-weight: bold; text-transform: uppercase;
-            animation: pulse 1.5s infinite;
+        /* FASE 2: TERMINALE DEBUG DI AVVIO */
+        .debug-container {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #020617; z-index: 25; display: flex; flex-direction: column; padding: 20px;
         }
-
-        @keyframes pulse {
-            0% { opacity: 0.4; }
-            50% { opacity: 1; }
-            100% { opacity: 0.4; }
+        .debug-header { color: #38bdf8; font-size: 14px; font-weight: bold; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px; text-transform: uppercase; }
+        #debug-console {
+            flex-grow: 1; background: #000; border: 1px solid #334155; border-radius: 8px;
+            padding: 10px; overflow-y: auto; font-family: monospace; font-size: 11px; color: #cbd5e1;
+            line-height: 1.4; word-wrap: break-word;
         }
+        .log-info { color: #94a3b8; }
+        .log-warn { color: #f59e0b; }
+        .log-error { color: #ef4444; }
+        .log-success { color: #10b981; font-weight: bold; }
+        .log-url { color: #3b82f6; font-size: 9px; }
 
-        /* FASE 2: TELEMETRIA E PANNELLO DIAGNOSTICO */
+        .debug-actions { display: flex; gap: 10px; margin-top: 15px; }
+        .btn-debug {
+            flex: 1; background: #334155; color: #fff; border: none; padding: 14px;
+            border-radius: 8px; font-weight: bold; font-size: 12px; text-transform: uppercase; cursor: pointer;
+        }
+        .btn-debug.primary { background: #06b6d4; color: #0b0f19; }
+
+        /* FASE 3: AR HUD & CONTROLS */
         .hud-overlay { 
             position: absolute; top: 10px; left: 10px; right: 10px;
             background: rgba(15, 23, 42, 0.92); border: 1px solid #06b6d4; 
             padding: 10px 12px; border-radius: 10px; font-size: 10px; z-index: 5; 
-            box-shadow: 0 4px 15px rgba(0,0,0,0.6); font-family: monospace;
-            display: flex; flex-direction: column; gap: 4px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 4px;
         }
         .hud-title { font-weight: bold; font-size: 12px; text-transform: uppercase; color: #fff; border-bottom: 1px solid #06b6d4; padding-bottom: 3px; }
         .val { color: #fff; font-weight: bold; }
-        .diag-box { background: rgba(2, 6, 23, 0.8); border: 1px solid #334155; padding: 6px; border-radius: 6px; margin-top: 4px; color: #cbd5e1; }
-        .diag-item { color: #38bdf8; }
 
-        .btn-retry {
-            background: #06b6d4; color: #0b0f19; border: none; padding: 2px 6px;
-            font-weight: bold; font-size: 10px; border-radius: 4px; cursor: pointer;
-            text-transform: uppercase; margin-left: 5px;
-        }
-
-        .controls-bar { 
-            position: absolute; bottom: 20px; left: 15px; right: 15px; 
-            display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 5; 
-        }
-
+        .controls-bar { position: absolute; bottom: 20px; left: 15px; right: 15px; display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 5; }
         .slider-box {
-            width: 100%; max-width: 380px; background: rgba(15, 23, 42, 0.92);
-            border: 1px solid #06b6d4; padding: 12px 16px; border-radius: 20px;
-            text-align: center; font-size: 12px; color: #fff;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.6);
+            width: 100%; max-width: 380px; background: rgba(15, 23, 42, 0.92); border: 1px solid #06b6d4; 
+            padding: 12px 16px; border-radius: 20px; text-align: center; font-size: 12px; color: #fff; box-shadow: 0 8px 25px rgba(0,0,0,0.6);
         }
-
-        input[type=range] { 
-            width: 100%; height: 32px; accent-color: #06b6d4; margin-top: 6px; cursor: pointer; 
-        }
-
-        .btn-primary { 
-            width: 100%; max-width: 340px; background: #06b6d4; color: #0b0f19; 
-            border: none; padding: 18px; font-weight: 700; font-size: 14px; 
-            border-radius: 30px; cursor: pointer; text-transform: uppercase; 
-            letter-spacing: 0.5px; margin: 0 auto; box-shadow: 0 4px 15px rgba(6, 182, 212, 0.3);
-        }
-
-        .btn-secondary { 
-            background: rgba(15, 23, 42, 0.85); color: #06b6d4; border: 1px solid #06b6d4; 
-            padding: 10px 18px; font-weight: 600; font-size: 12px; border-radius: 20px; 
-            cursor: pointer; text-transform: uppercase;
-        }
+        input[type=range] { width: 100%; height: 32px; accent-color: #06b6d4; margin-top: 6px; cursor: pointer; }
+        .btn-primary { width: 100%; max-width: 340px; background: #06b6d4; color: #0b0f19; border: none; padding: 18px; font-weight: 700; font-size: 14px; border-radius: 30px; cursor: pointer; text-transform: uppercase; }
+        .btn-secondary { background: rgba(15, 23, 42, 0.85); color: #06b6d4; border: 1px solid #06b6d4; padding: 10px 18px; font-weight: 600; font-size: 12px; border-radius: 20px; cursor: pointer; text-transform: uppercase; }
     </style>
 </head>
 <body>
 
-    <!-- FASE 1: CALIBRAZIONE TAP CON VERSIONE PROGRESSIVA -->
-    <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
+    <!-- FASE 1: CALIBRAZIONE TAP -->
+    <div id="calib-screen" class="calib-container">
         <div class="calib-header">
             <h1>PEAKFINDER AR</h1>
-            <div class="version-tag">VERSIONE BUILD v2.5.0</div>
-            <p style="margin-top: 14px;">1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR.</p>
+            <div class="version-tag">VERSIONE BOOT v2.6.0</div>
+            <p style="margin-top: 14px;">1. Orienta il telefono verso il <b>NORD REALE</b>.<br>2. Tocca AVVIA per scaricare i dati a fotocamera spenta.</p>
         </div>
-
         <div class="calib-body">
-            <div class="fixed-arrow-box">
-                <div class="fixed-needle"></div>
-            </div>
-            <div class="tap-hint">▲ TAP SULLO SCHERMO PER AVVIARE ▲</div>
+            <div class="fixed-arrow-box"><div class="fixed-needle"></div></div>
         </div>
-
-        <button class="btn-primary" onclick="event.stopPropagation(); calibrateAndStartAR();">IMPOSTA NORD ED ENTRA IN AR</button>
+        <button class="btn-primary" onclick="startBootSequence()">AVVIA DOWNLOAD CIME</button>
     </div>
 
-    <!-- FASE 2: FOTOCAMERA E CANVAS AR -->
-    <video id="camera-feed" autoplay playsinline muted class="hidden"></video>
-    <canvas id="ar-canvas" class="hidden"></canvas>
-
-    <!-- Telemetria e Diagnostica Avanzata -->
-    <div id="hud-telemetry" class="hud-overlay hidden">
-        <div id="hud-location-title" class="hud-title">RILEVAMENTO POSIZIONE...</div>
-        <div>GPS: <span id="d-gps" class="val">In attesa...</span> | Alt: <span id="d-alt" class="val">0m</span></div>
-        <div>Server: <span id="d-srv" class="val">Nessuno</span> <button id="retry-btn" class="btn-retry hidden" onclick="manualRetryFetch()">Riprova</button></div>
-        
-        <!-- PANNELLO DETTAGLIO -->
-        <div class="diag-box">
-            <div>1. Risposta Grezza Server : <span id="d-raw" class="val">0</span> elementi</div>
-            <div>2. Cime Parse Montuose  : <span id="d-parsed" class="val">0</span> cime</div>
-            <div>3. Cime Non Occluse (3D): <span id="d-unoccluded" class="val">0</span> cime</div>
-            <div>4. In Banda Slider     : <span id="d-inband" class="val">0</span> cime</div>
-            <div>5. Inquadrate (FOV)     : <span id="d-inview" class="val">0</span> cime</div>
+    <!-- FASE 2: TERMINALE DI DEBUG (Fotocamera Spenta) -->
+    <div id="debug-screen" class="debug-container hidden">
+        <div class="debug-header">Terminal Avvio Sistema...</div>
+        <div id="debug-console"></div>
+        <div class="debug-actions hidden" id="debug-error-actions">
+            <button class="btn-debug" onclick="copyDebugLog()">Copia Log Errori</button>
+            <button class="btn-debug primary" onclick="forceRetryNetwork()">Riprova Rete</button>
         </div>
-
-        <div class="diag-box" style="font-size: 9px; line-height: 1.3;">
-            <div style="color: #94a3b8; font-weight: bold;">CIME MONTUOSE IN MEMORIA:</div>
-            <div id="d-samples" class="diag-item">Nessun dato ancora scaricato</div>
-        </div>
+        <button id="btn-force-ar" class="btn-debug hidden" style="margin-top:10px; background:#475569;" onclick="enterARMode()">Forza AR (Senza Dati)</button>
     </div>
 
-    <!-- Controlli AR con Slider -->
-    <div id="ar-controls" class="controls-bar hidden">
-        <div class="slider-box">
-            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">20 km</b></div>
-            <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
-                Visibili tra <span id="dist-min" style="color:#fff;">10</span> e <span id="dist-max" style="color:#fff;">30</span> km (Buffer ±10 km)
-            </div>
-            <input type="range" id="depth-slider" min="5" max="60" step="1" value="20">
+    <!-- FASE 3: AR VIEW (Fotocamera e Canvas) -->
+    <div id="ar-view-layer" class="hidden">
+        <video id="camera-feed" autoplay playsinline muted></video>
+        <canvas id="ar-canvas"></canvas>
+
+        <div id="hud-telemetry" class="hud-overlay">
+            <div id="hud-location-title" class="hud-title">POSIZIONE AR...</div>
+            <div>GPS: <span id="d-gps" class="val">OK</span> | Alt: <span id="d-alt" class="val">0m</span></div>
+            <div>Cime in Memoria: <span id="d-parsed" class="val">0</span></div>
+            <div>In Banda Slider: <span id="d-inband" class="val">0</span> | Visibili: <span id="d-inview" class="val">0</span></div>
         </div>
-        <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
+
+        <div id="ar-controls" class="controls-bar">
+            <div class="slider-box">
+                <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">25 km</b></div>
+                <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
+                    Visibili tra <span id="dist-min" style="color:#fff;">15</span> e <span id="dist-max" style="color:#fff;">35</span> km (Buffer ±10 km)
+                </div>
+                <input type="range" id="depth-slider" min="5" max="60" step="1" value="25">
+            </div>
+            <button class="btn-secondary" onclick="location.reload()">Riavvia App</button>
+        </div>
     </div>
 
     <script>
         const RAD = Math.PI / 180;
         const DEG = 180 / Math.PI;
+        const BUFFER_DELTA_KM = 10;
 
-        let bufferDeltaKm = 10;
-
-        // Sensori & Assetto
         let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
         let sHeading = 0, sPitch = 0, sRoll = 0;
-        let currentHeading = 0;
-        let calibratedOffset = 0;
-        let isARActive = false;
-        let absoluteCompassEnabled = false; // Variabile per prevenire i conflitti hardware
+        let currentHeading = 0, calibratedOffset = 0;
+        let isARActive = false, absoluteCompassEnabled = false;
 
-        // GPS e Dati Cime
         let userLat = null, userLon = null, userAlt = 0;
-        let targetDistanceKm = 20;
-        
-        let allDownloadedPeaks = [];
-        let activePeaks = [];
-        let currentInViewCount = 0;
+        let targetDistanceKm = 25;
+        let allDownloadedPeaks = [], activePeaks = [];
+        let currentInViewCount = 0, lastDiagTime = 0;
 
-        let lastQueryLat = null, lastQueryLon = null;
-        let isFetching = false;
-        let lastDiagTime = 0;
+        let fullDebugLogText = "";
 
-        window.addEventListener('DOMContentLoaded', () => {
-            initSensors();
-            initGPS();
-            setupSlider();
-            resizeCanvas();
-            window.addEventListener('resize', resizeCanvas);
-            requestAnimationFrame(renderLoop);
-        });
+        // --- SISTEMA DI LOGGING TERMINALE ---
+        function logMsg(text, type="info") {
+            const consoleDiv = document.getElementById('debug-console');
+            const time = new Date().toLocaleTimeString();
+            let color = "#94a3b8"; // info
+            if (type === "warn") color = "#f59e0b";
+            if (type === "error") color = "#ef4444";
+            if (type === "success") color = "#10b981";
+            if (type === "url") color = "#3b82f6";
 
-        function setupSlider() {
-            const slider = document.getElementById('depth-slider');
+            const logLine = `[${time}] ${text}`;
+            fullDebugLogText += logLine + "\n";
+            consoleDiv.innerHTML += `<div style="color:${color}; margin-bottom:4px;">${logLine}</div>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
 
-            slider.addEventListener('input', () => {
-                targetDistanceKm = parseInt(slider.value);
-                updateBufferUIAndFilter();
+        function copyDebugLog() {
+            navigator.clipboard.writeText(fullDebugLogText).then(() => {
+                alert("Log copiato negli appunti! Incollalo nella chat.");
+            }).catch(err => {
+                prompt("Impossibile copiare in automatico. Copia il testo sottostante:", fullDebugLogText);
             });
         }
 
-        function updateBufferUIAndFilter() {
-            const minDist = Math.max(0, targetDistanceKm - bufferDeltaKm);
-            const maxDist = targetDistanceKm + bufferDeltaKm;
+        // --- FASE 1 -> FASE 2 ---
+        function startBootSequence() {
+            calibratedOffset = currentHeading;
+            document.getElementById('calib-screen').classList.add('hidden');
+            document.getElementById('debug-screen').classList.remove('hidden');
+            
+            logMsg("== PEAKFINDER BOOT SEQUENCE ==", "success");
+            logMsg("Fotocamera e Canvas disattivati per risparmio CPU.", "info");
+            logMsg("Richiesta coordinate GPS in corso...", "warn");
 
-            document.getElementById('dist-target').innerText = `${targetDistanceKm} km`;
-            document.getElementById('dist-min').innerText = `${minDist}`;
-            document.getElementById('dist-max').innerText = `${maxDist}`;
-
-            if (allDownloadedPeaks.length > 0) {
-                activePeaks = allDownloadedPeaks.filter(p => !p.isOccluded && p.dist >= minDist && p.dist <= maxDist);
-                document.getElementById('d-inband').innerText = activePeaks.length;
-            } else {
-                document.getElementById('d-inband').innerText = "0";
-            }
-        }
-
-        function initGPS() {
+            initSensors();
+            
             if ("geolocation" in navigator) {
-                navigator.geolocation.watchPosition(
-                    pos => {
+                navigator.geolocation.getCurrentPosition(
+                    async pos => {
                         userLat = pos.coords.latitude;
                         userLon = pos.coords.longitude;
                         userAlt = pos.coords.altitude || 0;
+                        logMsg(`GPS Fissato: Lat ${userLat.toFixed(4)}, Lon ${userLon.toFixed(4)}, Alt ${userAlt.toFixed(0)}m`, "success");
+                        
+                        try {
+                            const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${userLat}&longitude=${userLon}&localityLanguage=it`);
+                            if (res.ok) {
+                                const data = await res.json();
+                                const loc = data.locality || data.city || "Sconosciuta";
+                                document.getElementById('hud-location-title').innerText = loc.toUpperCase();
+                                logMsg(`Località rilevata: ${loc}`, "info");
+                            }
+                        } catch (e) { logMsg("Geocoding inverso fallito.", "warn"); }
 
-                        document.getElementById('d-gps').innerText = `${userLat.toFixed(3)}°, ${userLon.toFixed(3)}°`;
-                        document.getElementById('d-alt').innerText = `${userAlt.toFixed(0)}m`;
-
-                        fetchLocationName(userLat, userLon);
-
-                        if (shouldRefetchRadial(userLat, userLon)) {
-                            fetchPeaksMultiFailover(userLat, userLon);
-                        }
+                        executeNetworkFetchPipeline();
                     },
                     err => {
-                        document.getElementById('d-gps').innerText = "Attiva il GPS";
-                        document.getElementById('d-srv').innerText = "GPS Non Disponibile";
+                        logMsg(`ERRORE GPS: ${err.message}`, "error");
+                        document.getElementById('debug-error-actions').classList.remove('hidden');
+                        document.getElementById('btn-force-ar').classList.remove('hidden');
                     },
-                    { enableHighAccuracy: true, timeout: 10000 }
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
                 );
+            } else {
+                logMsg("Geolocalizzazione non supportata dal browser.", "error");
             }
         }
 
-        async function fetchLocationName(lat, lon) {
-            try {
-                const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=it`);
-                if (res.ok) {
-                    const data = await res.json();
-                    const locName = data.locality || data.city || data.town || data.principalSubdivision || "Posizione GPS";
-                    document.getElementById('hud-location-title').innerText = locName.toUpperCase();
-                }
-            } catch (e) { }
+        function forceRetryNetwork() {
+            document.getElementById('debug-error-actions').classList.add('hidden');
+            document.getElementById('btn-force-ar').classList.add('hidden');
+            logMsg("--- RITENTATIVO MANUALE RETE ---", "warn");
+            executeNetworkFetchPipeline();
         }
 
-        function shouldRefetchRadial(lat, lon) {
-            if (lastQueryLat === null || lastQueryLon === null) return true;
-            const distMoved = calculateDistance(lastQueryLat, lastQueryLon, lat, lon);
-            return distMoved > 2.0;
-        }
-
-        function manualRetryFetch() {
-            if (userLat !== null && userLon !== null) {
-                fetchPeaksMultiFailover(userLat, userLon, true);
-            }
-        }
-
-        function applyOcclusionCulling(peaks) {
-            peaks.sort((a, b) => a.dist - b.dist);
-
-            let unoccludedCount = 0;
-            for (let i = 0; i < peaks.length; i++) {
-                let p = peaks[i];
-                p.isOccluded = false;
-
-                for (let j = 0; j < i; j++) {
-                    let closer = peaks[j];
-
-                    let diffBearing = Math.abs(p.bearing - closer.bearing);
-                    if (diffBearing > 180) diffBearing = 360 - diffBearing;
-
-                    if (diffBearing < 2.0) {
-                        if (closer.elevationAngle >= p.elevationAngle - 0.2) {
-                            p.isOccluded = true;
-                            break;
-                        }
-                    }
-                }
-                if (!p.isOccluded) unoccludedCount++;
-            }
-            document.getElementById('d-unoccluded').innerText = unoccludedCount;
-        }
-
-        async function fetchPeaksMultiFailover(lat, lon, force = false) {
-            if (isFetching && !force) return;
-            isFetching = true;
-
-            const statusSrv = document.getElementById('d-srv');
-            const retryBtn = document.getElementById('retry-btn');
-            retryBtn.classList.add('hidden');
-
-            lastQueryLat = lat;
-            lastQueryLon = lon;
+        // --- FASE 2: SCARICAMENTO RETE PURO ---
+        async function executeNetworkFetchPipeline() {
+            allDownloadedPeaks = [];
+            logMsg("Avvio pipeline di rete (Timeout max: 15s per server)...", "info");
 
             const radiusKm = 40;
             const latDelta = radiusKm / 111.0;
-            const lonDelta = radiusKm / (111.0 * Math.cos(lat * RAD));
+            const lonDelta = radiusKm / (111.0 * Math.cos(userLat * RAD));
 
-            const minLat = (lat - latDelta).toFixed(4);
-            const maxLat = (lat + latDelta).toFixed(4);
-            const minLon = (lon - lonDelta).toFixed(4);
-            const maxLon = (lon + lonDelta).toFixed(4);
+            const minLat = (userLat - latDelta).toFixed(4);
+            const maxLat = (userLat + latDelta).toFixed(4);
+            const minLon = (userLon - lonDelta).toFixed(4);
+            const maxLon = (userLon + lonDelta).toFixed(4);
 
-            const ql = `[out:json][timeout:10];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
-
+            const ql = `[out:json][timeout:15];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
+            
             const overpassServers = [
                 "https://overpass-api.de/api/interpreter",
-                "https://overpass.kumi.systems/api/interpreter",
-                "https://overpass.private.coffee/api/interpreter",
-                "https://lz4.overpass-api.de/api/interpreter"
+                "https://lz4.overpass-api.de/api/interpreter",
+                "https://overpass.kumi.systems/api/interpreter"
             ];
 
+            // TENTATIVI OVERPASS
             for (let i = 0; i < overpassServers.length; i++) {
-                const baseUrl = overpassServers[i];
-                statusSrv.innerText = `Srv ${i + 1}/${overpassServers.length} (GET)...`;
-
+                const url = overpassServers[i];
+                logMsg(`Contatto Overpass Server ${i+1}: ${url.split('//')[1]}`, "warn");
+                
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 6000);
+                    const timeoutId = setTimeout(() => { controller.abort(); logMsg("-> Timeout forzato lato client (15s superati)", "error"); }, 15000);
 
-                    const fullUrl = `${baseUrl}?data=${encodeURIComponent(ql)}`;
-                    const res = await fetch(fullUrl, { signal: controller.signal });
+                    const start = Date.now();
+                    const res = await fetch(`${url}?data=${encodeURIComponent(ql)}`, { signal: controller.signal });
+                    const ping = Date.now() - start;
                     clearTimeout(timeoutId);
+
+                    logMsg(`-> Risposta ricevuta in ${ping}ms. Status HTTP: ${res.status}`, res.ok ? "info" : "error");
 
                     if (res.ok) {
                         const data = await res.json();
-                        if (data && data.elements && data.elements.length > 0) {
-                            statusSrv.innerText = `OSM OK (Srv ${i + 1})`;
-                            processOverpassData(data.elements, lat, lon);
-                            isFetching = false;
-                            return;
+                        logMsg(`-> JSON parsato. Nodi trovati: ${data.elements ? data.elements.length : 0}`, "info");
+                        if (data.elements && data.elements.length > 0) {
+                            processOverpassData(data.elements);
+                            logMsg(`=> SUCCESSO! ${allDownloadedPeaks.length} cime filtrate con successo.`, "success");
+                            logMsg("Avvio Motore Grafico AR in 2 secondi...", "success");
+                            setTimeout(enterARMode, 2000);
+                            return; // Stop pipeline
+                        } else {
+                            logMsg("-> Nessun nodo in risposta, provo il prossimo server.", "warn");
                         }
+                    } else {
+                        logMsg(`-> Errore HTTP: ${res.statusText}`, "error");
                     }
-                } catch (e) { }
+                } catch (e) {
+                    logMsg(`-> Eccezione Fetch: ${e.name} - ${e.message}`, "error");
+                }
             }
 
-            for (let i = 0; i < 2; i++) {
-                const baseUrl = overpassServers[i];
-                statusSrv.innerText = `Srv ${i + 1} (POST)...`;
-
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-                    const params = new URLSearchParams();
-                    params.append('data', ql);
-
-                    const res = await fetch(baseUrl, { method: 'POST', body: params, signal: controller.signal });
-                    clearTimeout(timeoutId);
-
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data && data.elements && data.elements.length > 0) {
-                            statusSrv.innerText = `OSM POST OK (Srv ${i + 1})`;
-                            processOverpassData(data.elements, lat, lon);
-                            isFetching = false;
-                            return;
-                        }
-                    }
-                } catch (e) { }
-            }
-
-            statusSrv.innerText = "Wikidata SPARQL...";
-            const sparql = `SELECT ?item ?itemLabel ?lat ?lon ?ele WHERE {
-              SERVICE wikibase:around {
-                ?item wdt:P625 ?location .
-                bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral .
-                bd:serviceParam wikibase:radius "40" .
-              }
-              ?item wdt:P31/wdt:279* wd:Q8502 .
-              ?item p:P625/psv:P625 ?locNode .
-              ?locNode wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon .
-              OPTIONAL { ?item wdt:P2044 ?ele . }
-              SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". }
-            } LIMIT 150`;
+            // FALLBACK WIKIDATA
+            logMsg("Tutti i server Overpass falliti. Avvio fallback Wikidata SPARQL...", "warn");
+            const sparql = `SELECT ?item ?itemLabel ?lat ?lon ?ele WHERE { SERVICE wikibase:around { ?item wdt:P625 ?location . bd:serviceParam wikibase:center "Point(${userLon} ${userLat})"^^geo:wktLiteral . bd:serviceParam wikibase:radius "40" . } ?item wdt:P31/wdt:279* wd:Q8502 . ?item p:P625/psv:P625 ?locNode . ?locNode wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon . OPTIONAL { ?item wdt:P2044 ?ele . } SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". } } LIMIT 150`;
 
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 7000);
-
-                const wikiUrl = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparql)}&format=json`;
-                const res = await fetch(wikiUrl, { headers: { 'Accept': 'application/sparql-results+json' }, signal: controller.signal });
+                const timeoutId = setTimeout(() => controller.abort(), 12000);
+                const res = await fetch(`https://query.wikidata.org/sparql?query=${encodeURIComponent(sparql)}&format=json`, { headers: { 'Accept': 'application/sparql-results+json' }, signal: controller.signal });
                 clearTimeout(timeoutId);
 
+                logMsg(`-> Wikidata HTTP Status: ${res.status}`, res.ok ? "info" : "error");
                 if (res.ok) {
                     const data = await res.json();
-                    if (data && data.results && data.results.bindings && data.results.bindings.length > 0) {
-                        statusSrv.innerText = "Wikidata SPARQL (OK)";
-                        processWikidataData(data.results.bindings, lat, lon);
-                        isFetching = false;
+                    if (data.results && data.results.bindings && data.results.bindings.length > 0) {
+                        processWikidataData(data.results.bindings);
+                        logMsg(`=> WIKIDATA SUCCESSO! ${allDownloadedPeaks.length} cime caricate.`, "success");
+                        logMsg("Avvio Motore Grafico AR in 2 secondi...", "success");
+                        setTimeout(enterARMode, 2000);
                         return;
+                    } else {
+                        logMsg("-> Wikidata: Nessun risultato nel raggio.", "error");
                     }
                 }
-            } catch (e) { }
+            } catch (e) { logMsg(`-> Errore Wikidata: ${e.message}`, "error"); }
 
-            isFetching = false;
-            statusSrv.innerText = "Errore Rete (Tocca Riprova)";
-            document.getElementById('d-raw').innerText = "0";
-            document.getElementById('d-parsed').innerText = "0";
-            document.getElementById('d-samples').innerText = "Nessun server ha risposto. Tocca Riprova.";
-            retryBtn.classList.remove('hidden');
+            // SE TUTTO FALLISCE
+            logMsg("=== ERRORE CRITICO RETE ===", "error");
+            logMsg("Nessun dato scaricato. Controlla connessione o invia il LOG allo sviluppatore.", "error");
+            document.getElementById('debug-error-actions').classList.remove('hidden');
+            document.getElementById('btn-force-ar').classList.remove('hidden');
         }
 
-        function processOverpassData(elements, lat, lon) {
-            let parsed = elements.map(el => {
+        // --- PROCESSING DATI ---
+        function processOverpassData(elements) {
+            allDownloadedPeaks = elements.map(el => {
                 if (!el || !el.tags) return null;
                 const name = el.tags.name || el.tags['name:it'] || el.tags.official_name;
                 if (!name) return null;
 
                 const ele = parseFloat(el.tags.ele) || 300;
-                const distKm = calculateDistance(lat, lon, el.lat, el.lon);
-                const bearing = calculateBearing(lat, lon, el.lat, el.lon);
+                const distKm = calculateDistance(userLat, userLon, el.lat, el.lon);
+                const bearing = calculateBearing(userLat, userLon, el.lat, el.lon);
                 const eleDiffMeters = ele - userAlt;
                 const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
-
                 return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
             }).filter(p => p !== null);
-
-            document.getElementById('d-raw').innerText = elements.length;
-            document.getElementById('d-parsed').innerText = parsed.length;
-            updateSamplesTelemetry(parsed);
-
-            applyOcclusionCulling(parsed);
-            allDownloadedPeaks = parsed;
+            document.getElementById('d-parsed').innerText = allDownloadedPeaks.length;
+            applyOcclusionCulling(allDownloadedPeaks);
             updateBufferUIAndFilter();
         }
 
-        function processWikidataData(bindings, lat, lon) {
-            let parsed = bindings.map(b => {
-                const name = b.itemLabel ? b.itemLabel.value : "Cima Montuosa";
+        function processWikidataData(bindings) {
+            allDownloadedPeaks = bindings.map(b => {
+                const name = b.itemLabel ? b.itemLabel.value : "Cima";
                 const pLat = parseFloat(b.lat.value);
                 const pLon = parseFloat(b.lon.value);
                 const ele = b.ele ? parseFloat(b.ele.value) : 350;
 
-                const distKm = calculateDistance(lat, lon, pLat, pLon);
-                const bearing = calculateBearing(lat, lon, pLat, pLon);
+                const distKm = calculateDistance(userLat, userLon, pLat, pLon);
+                const bearing = calculateBearing(userLat, userLon, pLat, pLon);
                 const eleDiffMeters = ele - userAlt;
                 const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
-
                 return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
             });
-
-            document.getElementById('d-raw').innerText = bindings.length;
-            document.getElementById('d-parsed').innerText = parsed.length;
-            updateSamplesTelemetry(parsed);
-
-            applyOcclusionCulling(parsed);
-            allDownloadedPeaks = parsed;
+            document.getElementById('d-parsed').innerText = allDownloadedPeaks.length;
+            applyOcclusionCulling(allDownloadedPeaks);
             updateBufferUIAndFilter();
         }
 
-        function updateSamplesTelemetry(peaks) {
-            const container = document.getElementById('d-samples');
-            if (!peaks || peaks.length === 0) {
-                container.innerText = "Nessuna cima trovata.";
-                return;
+        function applyOcclusionCulling(peaks) {
+            peaks.sort((a, b) => a.dist - b.dist);
+            for (let i = 0; i < peaks.length; i++) {
+                peaks[i].isOccluded = false;
+                for (let j = 0; j < i; j++) {
+                    let diffBearing = Math.abs(peaks[i].bearing - peaks[j].bearing);
+                    if (diffBearing > 180) diffBearing = 360 - diffBearing;
+                    if (diffBearing < 2.0 && peaks[j].elevationAngle >= peaks[i].elevationAngle - 0.2) {
+                        peaks[i].isOccluded = true; break;
+                    }
+                }
             }
-
-            let top3 = peaks.slice(0, 3).map(p => `• ${p.name} (${p.ele.toFixed(0)}m) - ${p.dist.toFixed(1)}km [Az: ${p.bearing.toFixed(0)}°]`).join("<br>");
-            container.innerHTML = top3;
         }
 
+        function updateBufferUIAndFilter() {
+            const minDist = Math.max(0, targetDistanceKm - BUFFER_DELTA_KM);
+            const maxDist = targetDistanceKm + BUFFER_DELTA_KM;
+            document.getElementById('dist-target').innerText = `${targetDistanceKm} km`;
+            document.getElementById('dist-min').innerText = `${minDist}`;
+            document.getElementById('dist-max').innerText = `${maxDist}`;
+
+            activePeaks = allDownloadedPeaks.filter(p => !p.isOccluded && p.dist >= minDist && p.dist <= maxDist);
+            document.getElementById('d-inband').innerText = activePeaks.length;
+        }
+
+        // MATEMATICA E SENSORI
         function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371;
-            const dLat = (lat2 - lat1) * RAD;
-            const dLon = (lon2 - lon1) * RAD;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(lat1 * RAD) * Math.cos(lat2 * RAD) *
-                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const R = 6371; const dLat = (lat2 - lat1) * RAD; const dLon = (lon2 - lon1) * RAD;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.sin(dLon/2) * Math.sin(dLon/2);
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
         function calculateBearing(lat1, lon1, lat2, lon2) {
             const dLon = (lon2 - lon1) * RAD;
             const y = Math.sin(dLon) * Math.cos(lat2 * RAD);
-            const x = Math.cos(lat1 * RAD) * Math.sin(lat2 * RAD) -
-                      Math.sin(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.cos(dLon);
+            const x = Math.cos(lat1 * RAD) * Math.sin(lat2 * RAD) - Math.sin(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.cos(dLon);
             return (Math.atan2(y, x) * DEG + 360) % 360;
         }
 
@@ -517,248 +401,119 @@
             return diff;
         }
 
-        async function calibrateAndStartAR() {
-            calibratedOffset = currentHeading;
-
-            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-                try {
-                    await DeviceOrientationEvent.requestPermission();
-                } catch (e) { }
-            }
-
-            document.getElementById('calib-screen').classList.add('hidden');
-            document.getElementById('camera-feed').classList.remove('hidden');
-            document.getElementById('ar-canvas').classList.remove('hidden');
-            document.getElementById('hud-telemetry').classList.remove('hidden');
-            document.getElementById('ar-controls').classList.remove('hidden');
-
-            isARActive = true;
-            await startCamera();
+        function initSensors() {
+            window.addEventListener('deviceorientationabsolute', (e) => {
+                if (e.alpha !== null) { absoluteCompassEnabled = true; rawAlpha = e.alpha || 0; rawBeta = e.beta || 0; rawGamma = e.gamma || 0; }
+            }, true);
+            window.addEventListener('deviceorientation', (e) => {
+                if (e.webkitCompassHeading !== undefined) { absoluteCompassEnabled = true; rawAlpha = 360 - e.webkitCompassHeading; rawBeta = e.beta || 0; rawGamma = e.gamma || 0; } 
+                else if (!absoluteCompassEnabled && e.alpha !== null) { rawAlpha = e.alpha || 0; rawBeta = e.beta || 0; rawGamma = e.gamma || 0; }
+            }, true);
         }
 
-        function reopenCalibration() {
-            isARActive = false;
-            document.getElementById('calib-screen').classList.remove('hidden');
-            document.getElementById('camera-feed').classList.add('hidden');
-            document.getElementById('ar-canvas').classList.add('hidden');
-            document.getElementById('hud-telemetry').classList.add('hidden');
-            document.getElementById('ar-controls').classList.add('hidden');
-        }
-
-        async function startCamera() {
-            const video = document.getElementById('camera-feed');
+        // --- FASE 3: ACCENSIONE FOTOCAMERA E RENDER AR ---
+        async function enterARMode() {
+            document.getElementById('debug-screen').classList.add('hidden');
+            document.getElementById('ar-view-layer').classList.remove('hidden');
+            setupSlider();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-                video.srcObject = stream;
+                document.getElementById('camera-feed').srcObject = stream;
             } catch (err) {
                 try {
-                    const streamFallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                    video.srcObject = streamFallback;
-                } catch (e) {
-                    alert("Impossibile accedere alla fotocamera.");
-                }
+                    const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    document.getElementById('camera-feed').srcObject = fallback;
+                } catch(e) { alert("Nessun accesso alla fotocamera."); }
             }
-        }
 
-        function resizeCanvas() {
-            const canvas = document.getElementById('ar-canvas');
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-
-        // ==========================================
-        // GESTIONE SENSORI: RISOLUZIONE CONFLITTI E STABILITÀ
-        // ==========================================
-        function initSensors() {
-            // Ascoltiamo la Bussola Assoluta (priorità alta)
-            window.addEventListener('deviceorientationabsolute', (e) => {
-                if (e.alpha !== null) {
-                    absoluteCompassEnabled = true; // Blocca il giroscopio relativo
-                    rawAlpha = e.alpha || 0;
-                    rawBeta = e.beta || 0;
-                    rawGamma = e.gamma || 0;
-                }
-            }, true);
-
-            // Ascoltiamo l'orientamento standard (giroscopio relativo o bussola iOS)
-            window.addEventListener('deviceorientation', (e) => {
-                // Supporto bussola hardware specifica per iPhone/iPad (Safari)
-                if (e.webkitCompassHeading !== undefined) {
-                    absoluteCompassEnabled = true;
-                    rawAlpha = 360 - e.webkitCompassHeading;
-                    rawBeta = e.beta || 0;
-                    rawGamma = e.gamma || 0;
-                } 
-                // Se la Bussola Assoluta Android non è disponibile, usiamo il giroscopio relativo
-                else if (!absoluteCompassEnabled) {
-                    if (e.alpha !== null) {
-                        rawAlpha = e.alpha || 0;
-                        rawBeta = e.beta || 0;
-                        rawGamma = e.gamma || 0;
-                    }
-                }
-            }, true);
+            isARActive = true;
+            requestAnimationFrame(renderLoop);
         }
 
         function getGravityAttitude(alpha, beta, gamma) {
-            const a = alpha * RAD;
-            const b = beta * RAD;
-            const g = gamma * RAD;
-
-            const cA = Math.cos(a), sA = Math.sin(a);
-            const cB = Math.cos(b), sB = Math.sin(b);
-            const cG = Math.cos(g), sG = Math.sin(g);
-
-            const Gx = sG * cB;
-            const Gy = -sB;
-            const Gz = -cG * cB;
-
+            const a = alpha * RAD, b = beta * RAD, g = gamma * RAD;
+            const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(b), sB = Math.sin(b), cG = Math.cos(g), sG = Math.sin(g);
+            const Gx = sG * cB, Gy = -sB, Gz = -cG * cB;
             const camUp = -Gz; 
             let pitch = Math.asin(Math.max(-1, Math.min(1, camUp))) * DEG;
             if (isNaN(pitch)) pitch = 0;
-
             const isLandscape = window.innerWidth > window.innerHeight;
             let roll = 0;
-
-            if (!isLandscape) {
-                roll = Math.atan2(Gx, -Gy) * DEG;
-            } else {
-                const scrAngle = (screen.orientation && screen.orientation.angle !== undefined) 
-                    ? screen.orientation.angle : (window.orientation || 0);
-                if (scrAngle === 90) {
-                    roll = Math.atan2(-Gy, Gx) * DEG;
-                } else {
-                    roll = Math.atan2(Gy, -Gx) * DEG;
-                }
+            if (!isLandscape) { roll = Math.atan2(Gx, -Gy) * DEG; } 
+            else {
+                const scrAngle = (screen.orientation && screen.orientation.angle !== undefined) ? screen.orientation.angle : (window.orientation || 0);
+                roll = (scrAngle === 90) ? Math.atan2(-Gy, Gx) * DEG : Math.atan2(Gy, -Gx) * DEG;
             }
             if (isNaN(roll)) roll = 0;
-
-            const camE = -(cA * sG + sA * sB * cG);
-            const camN = -(sA * sG - cA * sB * cG);
+            const camE = -(cA * sG + sA * sB * cG), camN = -(sA * sG - cA * sB * cG);
             let heading = Math.atan2(camE, camN) * DEG;
             if (isNaN(heading)) heading = 0;
             if (heading < 0) heading += 360;
-
             return { heading, pitch, roll };
         }
 
         function renderLoop() {
-            try {
-                const attitude = getGravityAttitude(rawAlpha, rawBeta, rawGamma);
-                currentHeading = attitude.heading;
-
-                if (isARActive) {
+            if (isARActive) {
+                try {
+                    const attitude = getGravityAttitude(rawAlpha, rawBeta, rawGamma);
+                    currentHeading = attitude.heading;
                     renderARHUD(attitude);
-                }
-            } catch (err) { }
+                } catch (err) { }
+            }
             requestAnimationFrame(renderLoop);
         }
 
         function renderARHUD(attitude) {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
-
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const w = canvas.width;
-            const h = canvas.height;
-            const cx = w / 2;
-            const cy = h / 2;
-            const isLandscape = w > h;
+            const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2, isLandscape = w > h;
 
             if (Math.abs(attitude.pitch) > 65) {
-                ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
-                ctx.strokeStyle = "#06b6d4";
-                ctx.lineWidth = 2;
-                ctx.fillRect(cx - 140, cy - 30, 280, 60);
-                ctx.strokeRect(cx - 140, cy - 30, 280, 60);
-
-                ctx.fillStyle = "#ffffff";
-                ctx.font = "bold 13px system-ui, sans-serif";
-                ctx.textAlign = "center";
+                ctx.fillStyle = "rgba(15, 23, 42, 0.85)"; ctx.strokeStyle = "#06b6d4"; ctx.lineWidth = 2;
+                ctx.fillRect(cx - 140, cy - 30, 280, 60); ctx.strokeRect(cx - 140, cy - 30, 280, 60);
+                ctx.fillStyle = "#ffffff"; ctx.font = "bold 13px system-ui"; ctx.textAlign = "center";
                 ctx.fillText("INCLINA IL TELEFONO", cx, cy - 6);
-                ctx.fillStyle = "#06b6d4";
-                ctx.font = "11px system-ui, sans-serif";
-                ctx.fillText("Punta la fotocamera verso l'orizzonte", cx, cy + 14);
+                ctx.fillStyle = "#06b6d4"; ctx.font = "11px system-ui"; ctx.fillText("Punta verso l'orizzonte", cx, cy + 14);
                 return;
             }
 
-            // SMORZAMENTO PESANTE (Anti-Tremolio). Fattore ridotto da 0.15 a 0.06 per massima stabilità
-            let diffH = shortestAngleDiff(currentHeading, sHeading);
-            sHeading = (sHeading + diffH * 0.06 + 360) % 360;
+            sHeading = (sHeading + shortestAngleDiff(currentHeading, sHeading) * 0.06 + 360) % 360;
+            sPitch = sPitch + (attitude.pitch - sPitch) * 0.10;
+            sRoll = sRoll + shortestAngleDiff(attitude.roll, sRoll) * 0.10;
 
-            let diffP = attitude.pitch - sPitch;
-            sPitch = sPitch + diffP * 0.10;
-
-            let diffR = shortestAngleDiff(attitude.roll, sRoll);
-            sRoll = sRoll + diffR * 0.10;
-
-            const fovV = isLandscape ? 45 : 65; 
-            const fovH = isLandscape ? 70 : 50;
-            
-            const pxPerDegreeV = h / fovV;
-            const pxPerDegreeH = w / fovH;
-            
+            const fovV = isLandscape ? 45 : 65, fovH = isLandscape ? 70 : 50;
+            const pxPerDegreeV = h / fovV, pxPerDegreeH = w / fovH;
             const horizonY = -sPitch * pxPerDegreeV;
             const finalHeading = (sHeading - calibratedOffset + 360) % 360;
 
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(-sRoll * RAD);
+            ctx.save(); ctx.translate(cx, cy); ctx.rotate(-sRoll * RAD);
 
-            // ORIZZONTE ARTIFICIALE
-            ctx.strokeStyle = "#06b6d4";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(-w, horizonY);
-            ctx.lineTo(w, horizonY);
-            ctx.stroke();
+            ctx.strokeStyle = "#06b6d4"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-w, horizonY); ctx.lineTo(w, horizonY); ctx.stroke();
 
-            // ASSI VERTICALI PUNTI CARDINALI
-            const cardinals = [
-                { name: "N (0°)",   deg: 0 },
-                { name: "E (90°)",  deg: 90 },
-                { name: "S (180°)", deg: 180 },
-                { name: "W (270°)", deg: 270 }
-            ];
-
+            const cardinals = [{ name: "N (0°)", deg: 0 }, { name: "E (90°)", deg: 90 }, { name: "S (180°)", deg: 180 }, { name: "W (270°)", deg: 270 }];
             cardinals.forEach(pt => {
                 let diff = pt.deg - finalHeading;
-                if (diff > 180) diff -= 360;
-                if (diff < -180) diff += 360;
-
+                if (diff > 180) diff -= 360; if (diff < -180) diff += 360;
                 if (Math.abs(diff) <= fovH / 2) {
                     let posX = diff * pxPerDegreeH;
-
-                    ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-                    ctx.lineWidth = 1.5;
-                    ctx.setLineDash([6, 4]);
-                    ctx.beginPath();
-                    ctx.moveTo(posX, horizonY - h);
-                    ctx.lineTo(posX, horizonY + h);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-
-                    ctx.fillStyle = "#0f172a";
-                    ctx.fillRect(posX - 35, horizonY - 14, 70, 28);
-                    ctx.strokeStyle = "#06b6d4";
-                    ctx.lineWidth = 1.5;
-                    ctx.strokeRect(posX - 35, horizonY - 14, 70, 28);
-
-                    ctx.fillStyle = "#ffffff";
-                    ctx.font = "bold 12px monospace";
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "middle";
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.4)"; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+                    ctx.beginPath(); ctx.moveTo(posX, horizonY - h); ctx.lineTo(posX, horizonY + h); ctx.stroke(); ctx.setLineDash([]);
+                    ctx.fillStyle = "#0f172a"; ctx.fillRect(posX - 35, horizonY - 14, 70, 28);
+                    ctx.strokeStyle = "#06b6d4"; ctx.lineWidth = 1.5; ctx.strokeRect(posX - 35, horizonY - 14, 70, 28);
+                    ctx.fillStyle = "#ffffff"; ctx.font = "bold 12px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
                     ctx.fillText(pt.name, posX, horizonY);
                 }
             });
 
-            // RENDERING ETICHETTE CIME MONTUOSE
             let visiblePeaks = activePeaks.filter(peak => {
                 let diffH = peak.bearing - finalHeading;
-                if (diffH > 180) diffH -= 360;
-                if (diffH < -180) diffH += 360;
+                if (diffH > 180) diffH -= 360; if (diffH < -180) diffH += 360;
                 return Math.abs(diffH) <= fovH / 2;
             });
 
@@ -766,74 +521,31 @@
             visiblePeaks.sort((a, b) => b.ele - a.ele);
 
             let placedBoxes = [];
-            let renderedLabelsCount = 0;
-
             visiblePeaks.forEach(peak => {
                 let diffH = peak.bearing - finalHeading;
-                if (diffH > 180) diffH -= 360;
-                if (diffH < -180) diffH += 360;
+                if (diffH > 180) diffH -= 360; if (diffH < -180) diffH += 360;
+                let targetX = diffH * pxPerDegreeH, targetY = horizonY - (peak.elevationAngle * pxPerDegreeV);
 
-                let targetX = diffH * pxPerDegreeH;
-                let targetY = horizonY - (peak.elevationAngle * pxPerDegreeV);
-
-                if (peak.smoothX === null || isNaN(peak.smoothX)) {
-                    peak.smoothX = targetX;
-                    peak.smoothY = targetY;
-                } else {
-                    peak.smoothX += (targetX - peak.smoothX) * 0.15;
-                    peak.smoothY += (targetY - peak.smoothY) * 0.15;
-                }
+                if (peak.smoothX === null || isNaN(peak.smoothX)) { peak.smoothX = targetX; peak.smoothY = targetY; } 
+                else { peak.smoothX += (targetX - peak.smoothX) * 0.15; peak.smoothY += (targetY - peak.smoothY) * 0.15; }
 
                 const stemLength = 15 + Math.min(40, (peak.ele / 3500) * 40);
-
-                const boxW = 120;
-                const boxH = 32;
-                const boxX = peak.smoothX - boxW / 2;
-                const boxY = peak.smoothY - stemLength - boxH;
-
+                const boxW = 120, boxH = 32, boxX = peak.smoothX - boxW / 2, boxY = peak.smoothY - stemLength - boxH;
                 const currentBox = { x1: boxX, y1: boxY, x2: boxX + boxW, y2: boxY + boxH };
 
-                let isColliding = placedBoxes.some(b => 
-                    !(currentBox.x2 < b.x1 || currentBox.x1 > b.x2 || currentBox.y2 < b.y1 || currentBox.y1 > b.y2)
-                );
+                let isColliding = placedBoxes.some(b => !(currentBox.x2 < b.x1 || currentBox.x1 > b.x2 || currentBox.y2 < b.y1 || currentBox.y1 > b.y2));
 
                 if (!isColliding) {
                     placedBoxes.push(currentBox);
-                    renderedLabelsCount++;
-
-                    ctx.fillStyle = "#ef4444";
-                    ctx.beginPath();
-                    ctx.arc(peak.smoothX, peak.smoothY, 5, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    ctx.strokeStyle = "rgba(239, 68, 68, 0.7)";
-                    ctx.lineWidth = 1.5;
-                    ctx.beginPath();
-                    ctx.moveTo(peak.smoothX, peak.smoothY);
-                    ctx.lineTo(peak.smoothX, boxY + boxH);
-                    ctx.stroke();
-
-                    ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
-                    ctx.strokeStyle = "#ef4444";
-                    ctx.lineWidth = 1.5;
-
-                    ctx.fillRect(boxX, boxY, boxW, boxH);
-                    ctx.strokeRect(boxX, boxY, boxW, boxH);
-
-                    ctx.fillStyle = "#ffffff";
-                    ctx.font = "bold 11px system-ui, sans-serif";
-                    ctx.textAlign = "center";
-                    ctx.textBaseline = "alphabetic";
+                    ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(peak.smoothX, peak.smoothY, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = "rgba(239, 68, 68, 0.7)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(peak.smoothX, peak.smoothY); ctx.lineTo(peak.smoothX, boxY + boxH); ctx.stroke();
+                    ctx.fillStyle = "rgba(15, 23, 42, 0.95)"; ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 1.5;
+                    ctx.fillRect(boxX, boxY, boxW, boxH); ctx.strokeRect(boxX, boxY, boxW, boxH);
+                    ctx.fillStyle = "#ffffff"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
                     ctx.fillText(peak.name, peak.smoothX, boxY + 14);
-
-                    ctx.fillStyle = "#06b6d4";
-                    ctx.font = "10px monospace";
-                    ctx.fillText(`${peak.ele.toFixed(0)}m | ${peak.dist.toFixed(1)}km`, peak.smoothX, boxY + 26);
+                    ctx.fillStyle = "#06b6d4"; ctx.font = "10px monospace"; ctx.fillText(`${peak.ele.toFixed(0)}m | ${peak.dist.toFixed(1)}km`, peak.smoothX, boxY + 26);
                 } else {
-                    ctx.fillStyle = "rgba(239, 68, 68, 0.4)";
-                    ctx.beginPath();
-                    ctx.arc(peak.smoothX, peak.smoothY, 3, 0, Math.PI * 2);
-                    ctx.fill();
+                    ctx.fillStyle = "rgba(239, 68, 68, 0.4)"; ctx.beginPath(); ctx.arc(peak.smoothX, peak.smoothY, 3, 0, Math.PI * 2); ctx.fill();
                 }
             });
 
@@ -841,18 +553,11 @@
             if (now - lastDiagTime > 500) {
                 lastDiagTime = now;
                 document.getElementById('d-inview').innerText = currentInViewCount;
-                document.getElementById('v-labels').innerText = renderedLabelsCount;
             }
 
             ctx.restore();
-
-            ctx.strokeStyle = "#ef4444";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(cx, cy, 12, 0, Math.PI * 2);
-            ctx.moveTo(cx - 20, cy); ctx.lineTo(cx + 20, cy);
-            ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy + 20);
-            ctx.stroke();
+            ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+            ctx.moveTo(cx - 20, cy); ctx.lineTo(cx + 20, cy); ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy + 20); ctx.stroke();
         }
     </script>
 </body>
