@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - v2.4.0</title>
+    <title>PeakFinder AR - v2.5.0 Stable Compass</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -127,7 +127,7 @@
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
             <h1>PEAKFINDER AR</h1>
-            <div class="version-tag">VERSIONE BUILD v2.4.0</div>
+            <div class="version-tag">VERSIONE BUILD v2.5.0</div>
             <p style="margin-top: 14px;">1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR.</p>
         </div>
 
@@ -190,6 +190,7 @@
         let currentHeading = 0;
         let calibratedOffset = 0;
         let isARActive = false;
+        let absoluteCompassEnabled = false; // Variabile per prevenire i conflitti hardware
 
         // GPS e Dati Cime
         let userLat = null, userLon = null, userAlt = 0;
@@ -312,7 +313,6 @@
             document.getElementById('d-unoccluded').innerText = unoccludedCount;
         }
 
-        // SCARICAMENTO RETE A TRE LIVELLI DI FAILOVER (OVERPASS GET -> OVERPASS POST -> WIKIDATA SPARQL)
         async function fetchPeaksMultiFailover(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
@@ -342,7 +342,6 @@
                 "https://lz4.overpass-api.de/api/interpreter"
             ];
 
-            // 1. TENTATIVO OVERPASS GET
             for (let i = 0; i < overpassServers.length; i++) {
                 const baseUrl = overpassServers[i];
                 statusSrv.innerText = `Srv ${i + 1}/${overpassServers.length} (GET)...`;
@@ -367,7 +366,6 @@
                 } catch (e) { }
             }
 
-            // 2. TENTATIVO OVERPASS POST
             for (let i = 0; i < 2; i++) {
                 const baseUrl = overpassServers[i];
                 statusSrv.innerText = `Srv ${i + 1} (POST)...`;
@@ -394,7 +392,6 @@
                 } catch (e) { }
             }
 
-            // 3. FALLBACK WIKIDATA SPARQL ENGINE
             statusSrv.innerText = "Wikidata SPARQL...";
             const sparql = `SELECT ?item ?itemLabel ?lat ?lon ?ele WHERE {
               SERVICE wikibase:around {
@@ -569,16 +566,38 @@
             canvas.height = window.innerHeight;
         }
 
+        // ==========================================
+        // GESTIONE SENSORI: RISOLUZIONE CONFLITTI E STABILITÀ
+        // ==========================================
         function initSensors() {
-            const handleOrientation = (e) => {
-                if (e.alpha === null || e.beta === null || e.gamma === null) return;
-                rawAlpha = e.alpha || 0;
-                rawBeta = e.beta || 0;
-                rawGamma = e.gamma || 0;
-            };
+            // Ascoltiamo la Bussola Assoluta (priorità alta)
+            window.addEventListener('deviceorientationabsolute', (e) => {
+                if (e.alpha !== null) {
+                    absoluteCompassEnabled = true; // Blocca il giroscopio relativo
+                    rawAlpha = e.alpha || 0;
+                    rawBeta = e.beta || 0;
+                    rawGamma = e.gamma || 0;
+                }
+            }, true);
 
-            window.addEventListener('deviceorientation', handleOrientation, true);
-            window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+            // Ascoltiamo l'orientamento standard (giroscopio relativo o bussola iOS)
+            window.addEventListener('deviceorientation', (e) => {
+                // Supporto bussola hardware specifica per iPhone/iPad (Safari)
+                if (e.webkitCompassHeading !== undefined) {
+                    absoluteCompassEnabled = true;
+                    rawAlpha = 360 - e.webkitCompassHeading;
+                    rawBeta = e.beta || 0;
+                    rawGamma = e.gamma || 0;
+                } 
+                // Se la Bussola Assoluta Android non è disponibile, usiamo il giroscopio relativo
+                else if (!absoluteCompassEnabled) {
+                    if (e.alpha !== null) {
+                        rawAlpha = e.alpha || 0;
+                        rawBeta = e.beta || 0;
+                        rawGamma = e.gamma || 0;
+                    }
+                }
+            }, true);
         }
 
         function getGravityAttitude(alpha, beta, gamma) {
@@ -665,14 +684,15 @@
                 return;
             }
 
+            // SMORZAMENTO PESANTE (Anti-Tremolio). Fattore ridotto da 0.15 a 0.06 per massima stabilità
             let diffH = shortestAngleDiff(currentHeading, sHeading);
-            sHeading = (sHeading + diffH * 0.15 + 360) % 360;
+            sHeading = (sHeading + diffH * 0.06 + 360) % 360;
 
             let diffP = attitude.pitch - sPitch;
-            sPitch = sPitch + diffP * 0.15;
+            sPitch = sPitch + diffP * 0.10;
 
             let diffR = shortestAngleDiff(attitude.roll, sRoll);
-            sRoll = sRoll + diffR * 0.15;
+            sRoll = sRoll + diffR * 0.10;
 
             const fovV = isLandscape ? 45 : 65; 
             const fovH = isLandscape ? 70 : 50;
