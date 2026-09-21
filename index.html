@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Robust Fixed Engine</title>
+    <title>PeakFinder AR - Perfect Filter</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -114,7 +114,7 @@
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
             <h1>PEAKFINDER AR - REALE LIVE</h1>
-            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR e i sensori.</p>
+            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR.</p>
         </div>
 
         <div class="calib-body">
@@ -152,15 +152,15 @@
         </div>
     </div>
 
-    <!-- Controlli AR con Slider Da 0 KM -->
+    <!-- Controlli AR con Slider fino a 60 KM -->
     <div id="ar-controls" class="controls-bar hidden">
         <div class="slider-box">
-            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">5 km</b></div>
+            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">20 km</b></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
-                Visibili tra <span id="dist-min" style="color:#fff;">0</span> e <span id="dist-max" style="color:#fff;">10</span> km (Buffer ±5 km)
+                Visibili tra <span id="dist-min" style="color:#fff;">10</span> e <span id="dist-max" style="color:#fff;">30</span> km (Buffer ±10 km)
             </div>
-            <!-- Minimo 0 per includere anche colli/cime ravvicinate -->
-            <input type="range" id="depth-slider" min="0" max="40" step="1" value="5">
+            <!-- Esteso fino a 60 km per catturare montagne reali anche da lontano -->
+            <input type="range" id="depth-slider" min="5" max="60" step="1" value="20">
         </div>
         <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
     </div>
@@ -169,7 +169,7 @@
         const RAD = Math.PI / 180;
         const DEG = 180 / Math.PI;
 
-        const BUFFER_DELTA_KM = 5;
+        let bufferDeltaKm = 10;
 
         // Sensori & Assetto
         let rawAlpha = 0, rawBeta = 0, rawGamma = 0;
@@ -180,7 +180,7 @@
 
         // GPS e Dati Cime
         let userLat = null, userLon = null, userAlt = 0;
-        let targetDistanceKm = 5;
+        let targetDistanceKm = 20;
         
         let allDownloadedPeaks = [];
         let activePeaks = [];
@@ -188,8 +188,9 @@
         let lastQueryLat = null, lastQueryLon = null;
         let isFetching = false;
 
-        // Parole chiave per identificare vere cime/rilievi su Wikipedia
-        const mountainKeywords = ["monte", "cima", "corno", "pizzo", "sasso", "rocca", "colle", "colletto", "bric", "cresta", "serraglio", "alpe", "zucco", "punta"];
+        // REGEX RIGOROSA PER SOLI NOMI MONTUOSI (Esclude parole con sottostringhe come Collezione)
+        const strictMountainRegex = /\b(monte|m\.|cima|corno|pizzo|sasso|rocca|colle|colletto|bric|cresta|alpe|zucco|punta)\b/i;
+        const excludedRegex = /collezione|collegio|stazione|piazza|palazzo|via|viale|corso|strada|ospedale|scuola|museo/i;
 
         window.addEventListener('DOMContentLoaded', () => {
             initSensors();
@@ -210,8 +211,8 @@
         }
 
         function updateBufferUIAndFilter() {
-            const minDist = Math.max(0, targetDistanceKm - BUFFER_DELTA_KM);
-            const maxDist = targetDistanceKm + BUFFER_DELTA_KM;
+            const minDist = Math.max(0, targetDistanceKm - bufferDeltaKm);
+            const maxDist = targetDistanceKm + bufferDeltaKm;
 
             document.getElementById('dist-target').innerText = `${targetDistanceKm} km`;
             document.getElementById('dist-min').innerText = `${minDist}`;
@@ -265,7 +266,7 @@
         function shouldRefetchRadial(lat, lon) {
             if (lastQueryLat === null || lastQueryLon === null) return true;
             const distMoved = calculateDistance(lastQueryLat, lastQueryLon, lat, lon);
-            return distMoved > 1.0;
+            return distMoved > 2.0;
         }
 
         function manualRetryFetch() {
@@ -300,7 +301,7 @@
             document.getElementById('d-unoccluded').innerText = unoccludedCount;
         }
 
-        // MOTORINO DI SCARICAMENTO CON FILTRO "VERI MONTI"
+        // SCARICAMENTO E FILTRAGGIO RIGOROSO MONTI
         async function fetchPeaksReliable(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
@@ -312,19 +313,19 @@
             lastQueryLat = lat;
             lastQueryLon = lon;
 
-            // 1. OVERPASS API (Priorità alle vere cime OSM)
-            statusSrv.innerText = "Overpass API...";
+            // 1. OVERPASS API (Fino a 50 km per prendere cime reali)
+            statusSrv.innerText = "Overpass API (50km)...";
             const overpassServers = [
                 "https://overpass-api.de/api/interpreter",
                 "https://overpass.kumi.systems/api/interpreter"
             ];
 
-            const ql = `[out:json][timeout:5];node["natural"="peak"]["name"](around:20000,${lat},${lon});out body;`;
+            const ql = `[out:json][timeout:6];node["natural"="peak"]["name"](around:50000,${lat},${lon});out body 200;`;
 
             for (let baseUrl of overpassServers) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 4000);
+                    const timeoutId = setTimeout(() => controller.abort(), 4500);
 
                     const fullUrl = `${baseUrl}?data=${encodeURIComponent(ql)}`;
                     const res = await fetch(fullUrl, { signal: controller.signal });
@@ -347,7 +348,7 @@
                 } catch (e) { }
             }
 
-            // 2. FALLBACK WIKIPEDIA GEODATA (Filtro rigoroso sui soli nomi di montagne)
+            // 2. FALLBACK WIKIPEDIA GEODATA (Filtro rigoroso con Regex \b)
             statusSrv.innerText = "Wikipedia Geosearch...";
             try {
                 const wikiGeoUrl = `https://it.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=10000&gslimit=100&format=json&origin=*`;
@@ -364,7 +365,7 @@
                         document.getElementById('d-raw').innerText = rawLen;
                         
                         if (rawLen > 0) {
-                            statusSrv.innerText = "Wikipedia (Filtrata)";
+                            statusSrv.innerText = "Wikipedia (Filtrata Rigorosa)";
                             processWikipediaData(data.query.geosearch, lat, lon);
                             isFetching = false;
                             return;
@@ -377,7 +378,7 @@
             statusSrv.innerText = "Errore Rete / Nessuna Cima";
             document.getElementById('d-raw').innerText = "0";
             document.getElementById('d-parsed').innerText = "0";
-            document.getElementById('d-samples').innerText = "Nessuna cima trovata nella zona.";
+            document.getElementById('d-samples').innerText = "Nessuna cima montuosa trovata nel raggio.";
             retryBtn.classList.remove('hidden');
         }
 
@@ -405,14 +406,14 @@
         }
 
         function processWikipediaData(items, lat, lon) {
-            // Filtra solo le pagine Wikipedia che contengono termini montuosi
             let parsed = items.map(item => {
                 const name = item.title;
-                const lowerName = name.toLowerCase();
 
-                // Verifica se il titolo corrisponde a una montagna
-                const isMountain = mountainKeywords.some(kw => lowerName.includes(kw));
-                if (!isMountain) return null;
+                // Esclude fermate, musei e luoghi urbani
+                if (excludedRegex.test(name)) return null;
+
+                // Accetta solo entità con confini di parola corretti (\bmonte\b, \bcolle\b)
+                if (!strictMountainRegex.test(name)) return null;
 
                 const distKm = item.dist / 1000;
                 
@@ -442,7 +443,7 @@
                 return;
             }
 
-            let top3 = peaks.slice(0, 3).map(p => `• ${p.name} (${p.ele.toFixed(0)}m) - ${p.dist.toFixed(1)}km`).join("<br>");
+            let top3 = peaks.slice(0, 3).map(p => `• ${p.name} (${p.ele.toFixed(0)}m) - ${p.dist.toFixed(1)}km [Az: ${p.bearing.toFixed(0)}°]`).join("<br>");
             container.innerHTML = top3;
         }
 
@@ -464,11 +465,9 @@
             return (Math.atan2(y, x) * DEG + 360) % 360;
         }
 
-        // ATTIVAZIONE FOTOCAMERA + AUTORIZZAZIONE SENSORE PER IOS/MOBILE
         async function calibrateAndStartAR() {
             calibratedOffset = currentHeading;
 
-            // Richiesta esplicita permessi sensore se richiesta dal browser (iOS/Safari)
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
                 try {
                     await DeviceOrientationEvent.requestPermission();
@@ -577,7 +576,6 @@
             requestAnimationFrame(renderLoop);
         }
 
-        // RENDERING AR CON PROTEZIONE ANTI-NaN SUI SENSORI
         function renderARHUD(attitude) {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
@@ -589,7 +587,6 @@
             const cy = h / 2;
             const isLandscape = w > h;
 
-            // PROTEZIONE ANTI-NaN PER EVITARE IL BLOCCO DELLA GRAFICA
             if (isNaN(sHeading)) sHeading = currentHeading;
             if (isNaN(sPitch)) sPitch = attitude.pitch;
             if (isNaN(sRoll)) sRoll = attitude.roll;
