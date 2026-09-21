@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - High Reliability Engine</title>
+    <title>PeakFinder AR - v2.4.0</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -13,7 +13,7 @@
 
         .hidden { display: none !important; }
 
-        /* FASE 1: CALIBRAZIONE TAP */
+        /* FASE 1: CALIBRAZIONE TAP & VERSIONE */
         .calib-container { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             display: flex; flex-direction: column; justify-content: space-between; 
@@ -24,6 +24,19 @@
         .calib-header { margin-top: 20px; }
         .calib-header h1 { color: #f8fafc; font-size: 22px; font-weight: 700; letter-spacing: 1px; }
         .calib-header p { color: #94a3b8; font-size: 14px; margin-top: 10px; line-height: 1.5; }
+
+        .version-tag {
+            display: inline-block;
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid #06b6d4;
+            color: #06b6d4;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-top: 8px;
+            letter-spacing: 1px;
+        }
 
         .calib-body { 
             display: flex; flex-direction: column; align-items: center; justify-content: center; 
@@ -110,11 +123,12 @@
 </head>
 <body>
 
-    <!-- FASE 1: CALIBRAZIONE TAP NORD -->
+    <!-- FASE 1: CALIBRAZIONE TAP CON VERSIONE PROGRESSIVA -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>PEAKFINDER AR - REALE LIVE</h1>
-            <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR.</p>
+            <h1>PEAKFINDER AR</h1>
+            <div class="version-tag">VERSIONE BUILD v2.4.0</div>
+            <p style="margin-top: 14px;">1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR.</p>
         </div>
 
         <div class="calib-body">
@@ -155,11 +169,11 @@
     <!-- Controlli AR con Slider -->
     <div id="ar-controls" class="controls-bar hidden">
         <div class="slider-box">
-            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">15 km</b></div>
+            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">20 km</b></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
-                Visibili tra <span id="dist-min" style="color:#fff;">5</span> e <span id="dist-max" style="color:#fff;">25</span> km (Buffer ±10 km)
+                Visibili tra <span id="dist-min" style="color:#fff;">10</span> e <span id="dist-max" style="color:#fff;">30</span> km (Buffer ±10 km)
             </div>
-            <input type="range" id="depth-slider" min="5" max="60" step="1" value="15">
+            <input type="range" id="depth-slider" min="5" max="60" step="1" value="20">
         </div>
         <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
     </div>
@@ -179,7 +193,7 @@
 
         // GPS e Dati Cime
         let userLat = null, userLon = null, userAlt = 0;
-        let targetDistanceKm = 15;
+        let targetDistanceKm = 20;
         
         let allDownloadedPeaks = [];
         let activePeaks = [];
@@ -237,7 +251,7 @@
                         fetchLocationName(userLat, userLon);
 
                         if (shouldRefetchRadial(userLat, userLon)) {
-                            fetchPeaksBBox(userLat, userLon);
+                            fetchPeaksMultiFailover(userLat, userLon);
                         }
                     },
                     err => {
@@ -268,7 +282,7 @@
 
         function manualRetryFetch() {
             if (userLat !== null && userLon !== null) {
-                fetchPeaksBBox(userLat, userLon, true);
+                fetchPeaksMultiFailover(userLat, userLon, true);
             }
         }
 
@@ -298,8 +312,8 @@
             document.getElementById('d-unoccluded').innerText = unoccludedCount;
         }
 
-        // SCARICAMENTO RETE AD ALTA TOLLERANZA (TIMEOUT 12 SECONDI PER 4G/5G)
-        async function fetchPeaksBBox(lat, lon, force = false) {
+        // SCARICAMENTO RETE A TRE LIVELLI DI FAILOVER (OVERPASS GET -> OVERPASS POST -> WIKIDATA SPARQL)
+        async function fetchPeaksMultiFailover(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
 
@@ -310,7 +324,7 @@
             lastQueryLat = lat;
             lastQueryLon = lon;
 
-            const radiusKm = 35; // Raggio 35 km (cattura Colli Bolognesi e Appennino)
+            const radiusKm = 40;
             const latDelta = radiusKm / 111.0;
             const lonDelta = radiusKm / (111.0 * Math.cos(lat * RAD));
 
@@ -319,56 +333,106 @@
             const minLon = (lon - lonDelta).toFixed(4);
             const maxLon = (lon + lonDelta).toFixed(4);
 
-            const ql = `[out:json][timeout:12];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
+            const ql = `[out:json][timeout:10];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
 
             const overpassServers = [
                 "https://overpass-api.de/api/interpreter",
                 "https://overpass.kumi.systems/api/interpreter",
                 "https://overpass.private.coffee/api/interpreter",
-                "https://lz4.overpass-api.de/api/interpreter",
-                "https://overpass.nchc.org.tw/api/interpreter"
+                "https://lz4.overpass-api.de/api/interpreter"
             ];
 
+            // 1. TENTATIVO OVERPASS GET
             for (let i = 0; i < overpassServers.length; i++) {
                 const baseUrl = overpassServers[i];
-                statusSrv.innerText = `Srv ${i + 1}/${overpassServers.length} (Attesa 4G)...`;
+                statusSrv.innerText = `Srv ${i + 1}/${overpassServers.length} (GET)...`;
 
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 12000); // Extended 12s timeout for mobile 4G
+                    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-                    const params = new URLSearchParams();
-                    params.append('data', ql);
-
-                    const res = await fetch(baseUrl, {
-                        method: 'POST',
-                        body: params,
-                        signal: controller.signal
-                    });
+                    const fullUrl = `${baseUrl}?data=${encodeURIComponent(ql)}`;
+                    const res = await fetch(fullUrl, { signal: controller.signal });
                     clearTimeout(timeoutId);
 
                     if (res.ok) {
                         const data = await res.json();
-                        if (data && data.elements) {
-                            const rawLen = data.elements.length;
-                            document.getElementById('d-raw').innerText = rawLen;
-
-                            if (rawLen > 0) {
-                                statusSrv.innerText = `OK (Server ${i + 1})`;
-                                processOverpassData(data.elements, lat, lon);
-                                isFetching = false;
-                                return;
-                            }
+                        if (data && data.elements && data.elements.length > 0) {
+                            statusSrv.innerText = `OSM OK (Srv ${i + 1})`;
+                            processOverpassData(data.elements, lat, lon);
+                            isFetching = false;
+                            return;
                         }
                     }
                 } catch (e) { }
             }
 
+            // 2. TENTATIVO OVERPASS POST
+            for (let i = 0; i < 2; i++) {
+                const baseUrl = overpassServers[i];
+                statusSrv.innerText = `Srv ${i + 1} (POST)...`;
+
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+                    const params = new URLSearchParams();
+                    params.append('data', ql);
+
+                    const res = await fetch(baseUrl, { method: 'POST', body: params, signal: controller.signal });
+                    clearTimeout(timeoutId);
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.elements && data.elements.length > 0) {
+                            statusSrv.innerText = `OSM POST OK (Srv ${i + 1})`;
+                            processOverpassData(data.elements, lat, lon);
+                            isFetching = false;
+                            return;
+                        }
+                    }
+                } catch (e) { }
+            }
+
+            // 3. FALLBACK WIKIDATA SPARQL ENGINE
+            statusSrv.innerText = "Wikidata SPARQL...";
+            const sparql = `SELECT ?item ?itemLabel ?lat ?lon ?ele WHERE {
+              SERVICE wikibase:around {
+                ?item wdt:P625 ?location .
+                bd:serviceParam wikibase:center "Point(${lon} ${lat})"^^geo:wktLiteral .
+                bd:serviceParam wikibase:radius "40" .
+              }
+              ?item wdt:P31/wdt:279* wd:Q8502 .
+              ?item p:P625/psv:P625 ?locNode .
+              ?locNode wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon .
+              OPTIONAL { ?item wdt:P2044 ?ele . }
+              SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". }
+            } LIMIT 150`;
+
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+                const wikiUrl = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparql)}&format=json`;
+                const res = await fetch(wikiUrl, { headers: { 'Accept': 'application/sparql-results+json' }, signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.results && data.results.bindings && data.results.bindings.length > 0) {
+                        statusSrv.innerText = "Wikidata SPARQL (OK)";
+                        processWikidataData(data.results.bindings, lat, lon);
+                        isFetching = false;
+                        return;
+                    }
+                }
+            } catch (e) { }
+
             isFetching = false;
-            statusSrv.innerText = "Errore Connessione Server";
+            statusSrv.innerText = "Errore Rete (Tocca Riprova)";
             document.getElementById('d-raw').innerText = "0";
             document.getElementById('d-parsed').innerText = "0";
-            document.getElementById('d-samples').innerText = "Connessione fallita. Tocca Riprova.";
+            document.getElementById('d-samples').innerText = "Nessun server ha risposto. Tocca Riprova.";
             retryBtn.classList.remove('hidden');
         }
 
@@ -387,6 +451,31 @@
                 return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
             }).filter(p => p !== null);
 
+            document.getElementById('d-raw').innerText = elements.length;
+            document.getElementById('d-parsed').innerText = parsed.length;
+            updateSamplesTelemetry(parsed);
+
+            applyOcclusionCulling(parsed);
+            allDownloadedPeaks = parsed;
+            updateBufferUIAndFilter();
+        }
+
+        function processWikidataData(bindings, lat, lon) {
+            let parsed = bindings.map(b => {
+                const name = b.itemLabel ? b.itemLabel.value : "Cima Montuosa";
+                const pLat = parseFloat(b.lat.value);
+                const pLon = parseFloat(b.lon.value);
+                const ele = b.ele ? parseFloat(b.ele.value) : 350;
+
+                const distKm = calculateDistance(lat, lon, pLat, pLon);
+                const bearing = calculateBearing(lat, lon, pLat, pLon);
+                const eleDiffMeters = ele - userAlt;
+                const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
+
+                return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
+            });
+
+            document.getElementById('d-raw').innerText = bindings.length;
             document.getElementById('d-parsed').innerText = parsed.length;
             updateSamplesTelemetry(parsed);
 
