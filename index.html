@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Smooth Render & Fast Peaks</title>
+    <title>PeakFinder AR - Stable AR Engine</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -113,7 +113,7 @@
     <!-- FASE 1: CALIBRAZIONE TAP NORD -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>PEAKFINDER AR - LIVE REALE</h1>
+            <h1>PEAKFINDER AR - REALE LIVE</h1>
             <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR.</p>
         </div>
 
@@ -147,7 +147,7 @@
         </div>
 
         <div class="diag-box" style="font-size: 9px; line-height: 1.3;">
-            <div style="color: #94a3b8; font-weight: bold;">CIME MONTUOSE FILTRATE IN MEMORIA:</div>
+            <div style="color: #94a3b8; font-weight: bold;">CIME MONTUOSE IN MEMORIA:</div>
             <div id="d-samples" class="diag-item">Nessun dato ancora scaricato</div>
         </div>
     </div>
@@ -155,11 +155,11 @@
     <!-- Controlli AR con Slider -->
     <div id="ar-controls" class="controls-bar hidden">
         <div class="slider-box">
-            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">20 km</b></div>
+            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">25 km</b></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
-                Visibili tra <span id="dist-min" style="color:#fff;">10</span> e <span id="dist-max" style="color:#fff;">30</span> km (Buffer ±10 km)
+                Visibili tra <span id="dist-min" style="color:#fff;">15</span> e <span id="dist-max" style="color:#fff;">35</span> km (Buffer ±10 km)
             </div>
-            <input type="range" id="depth-slider" min="5" max="60" step="1" value="20">
+            <input type="range" id="depth-slider" min="5" max="60" step="1" value="25">
         </div>
         <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
     </div>
@@ -179,7 +179,7 @@
 
         // GPS e Dati Cime
         let userLat = null, userLon = null, userAlt = 0;
-        let targetDistanceKm = 20;
+        let targetDistanceKm = 25;
         
         let allDownloadedPeaks = [];
         let activePeaks = [];
@@ -188,9 +188,6 @@
         let lastQueryLat = null, lastQueryLon = null;
         let isFetching = false;
         let lastDiagTime = 0;
-
-        const strictMountainRegex = /\b(monte|m\.|cima|corno|pizzo|sasso|rocca|colle|colletto|bric|cresta|alpe|zucco|punta)\b/i;
-        const excludedRegex = /collezione|collegio|stazione|piazza|palazzo|via|viale|corso|strada|ospedale|scuola|museo/i;
 
         window.addEventListener('DOMContentLoaded', () => {
             initSensors();
@@ -301,7 +298,7 @@
             document.getElementById('d-unoccluded').innerText = unoccludedCount;
         }
 
-        // SCARICAMENTO RETE CON OVERPASS (TIMEOUT ESTESO A 8s) + WIKIPEDIA
+        // SCARICAMENTO SOLIDO ENTITÀ GEOGRAFICHE "natural=peak"
         async function fetchPeaksReliable(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
@@ -313,14 +310,13 @@
             lastQueryLat = lat;
             lastQueryLon = lon;
 
-            // 1. OVERPASS API (Timeout esteso a 8s per chiamate da mobile 4G/5G)
-            statusSrv.innerText = "Overpass API (30km)...";
+            statusSrv.innerText = "Overpass API (50km)...";
             const overpassServers = [
                 "https://overpass-api.de/api/interpreter",
                 "https://overpass.kumi.systems/api/interpreter"
             ];
 
-            const ql = `[out:json][timeout:8];node["natural"="peak"]["name"](around:30000,${lat},${lon});out body 200;`;
+            const ql = `[out:json][timeout:8];node["natural"="peak"](around:50000,${lat},${lon});out body 250;`;
 
             for (let baseUrl of overpassServers) {
                 try {
@@ -348,37 +344,11 @@
                 } catch (e) { }
             }
 
-            // 2. FALLBACK WIKIPEDIA GEODATA
-            statusSrv.innerText = "Wikipedia Geosearch...";
-            try {
-                const wikiGeoUrl = `https://it.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=10000&gslimit=100&format=json&origin=*`;
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-                const res = await fetch(wikiGeoUrl, { signal: controller.signal });
-                clearTimeout(timeoutId);
-
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data && data.query && data.query.geosearch) {
-                        const rawLen = data.query.geosearch.length;
-                        document.getElementById('d-raw').innerText = rawLen;
-                        
-                        if (rawLen > 0) {
-                            statusSrv.innerText = "Wikipedia (Filtrata)";
-                            processWikipediaData(data.query.geosearch, lat, lon);
-                            isFetching = false;
-                            return;
-                        }
-                    }
-                }
-            } catch (e) { }
-
             isFetching = false;
-            statusSrv.innerText = "Errore Rete / Nessuna Cima";
+            statusSrv.innerText = "Errore Connessione Server";
             document.getElementById('d-raw').innerText = "0";
             document.getElementById('d-parsed').innerText = "0";
-            document.getElementById('d-samples').innerText = "Nessuna cima montuosa trovata nel raggio.";
+            document.getElementById('d-samples').innerText = "Nessuna cima trovata nel raggio.";
             retryBtn.classList.remove('hidden');
         }
 
@@ -388,37 +358,9 @@
                 const name = el.tags.name || el.tags['name:it'] || el.tags.official_name;
                 if (!name) return null;
 
-                const ele = parseFloat(el.tags.ele) || 1200;
+                const ele = parseFloat(el.tags.ele) || 1000;
                 const distKm = calculateDistance(lat, lon, el.lat, el.lon);
                 const bearing = calculateBearing(lat, lon, el.lat, el.lon);
-                const eleDiffMeters = ele - userAlt;
-                const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
-
-                return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
-            }).filter(p => p !== null);
-
-            document.getElementById('d-parsed').innerText = parsed.length;
-            updateSamplesTelemetry(parsed);
-
-            applyOcclusionCulling(parsed);
-            allDownloadedPeaks = parsed;
-            updateBufferUIAndFilter();
-        }
-
-        function processWikipediaData(items, lat, lon) {
-            let parsed = items.map(item => {
-                const name = item.title;
-
-                if (excludedRegex.test(name)) return null;
-                if (!strictMountainRegex.test(name)) return null;
-
-                const distKm = item.dist / 1000;
-                
-                let ele = userAlt + 300; 
-                const eleMatch = name.match(/(\d{3,4})\s*m/i);
-                if (eleMatch) ele = parseFloat(eleMatch[1]);
-
-                const bearing = calculateBearing(lat, lon, item.lat, item.lon);
                 const eleDiffMeters = ele - userAlt;
                 const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
 
@@ -436,7 +378,7 @@
         function updateSamplesTelemetry(peaks) {
             const container = document.getElementById('d-samples');
             if (!peaks || peaks.length === 0) {
-                container.innerText = "Nessuna cima montuosa trovata.";
+                container.innerText = "Nessuna cima trovata.";
                 return;
             }
 
@@ -460,6 +402,13 @@
             const x = Math.cos(lat1 * RAD) * Math.sin(lat2 * RAD) -
                       Math.sin(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.cos(dLon);
             return (Math.atan2(y, x) * DEG + 360) % 360;
+        }
+
+        function shortestAngleDiff(target, current) {
+            let diff = (target - current) % 360;
+            if (diff > 180) diff -= 360;
+            if (diff < -180) diff += 360;
+            return diff;
         }
 
         async function calibrateAndStartAR() {
@@ -577,10 +526,13 @@
             requestAnimationFrame(renderLoop);
         }
 
-        // RENDERING AR CON AGGIORNAMENTO HUD SEPARATO E TEMPORIZZATO (FLUIDITÀ SBLOCCATA A 60 FPS)
+        // RENDERING AR ROBUSTO CON RESET MATRICE HARDWARE E PITCH-GUARD
         function renderARHUD(attitude) {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
+
+            // 1. RESET REALE E COMPLETO DELLA MATRICE PER EVITARE EFFETTI FANTASMA SUL CANVAS
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             const w = canvas.width;
@@ -589,21 +541,33 @@
             const cy = h / 2;
             const isLandscape = w > h;
 
-            if (isNaN(sHeading)) sHeading = currentHeading;
-            if (isNaN(sPitch)) sPitch = attitude.pitch;
-            if (isNaN(sRoll)) sRoll = attitude.roll;
+            // 2. GUARDRAIL INCLINAZIONE: SE IL TELEFONO È PUNTATO IN BASSO/IN ALTO (SINGOLARITÀ PITCH)
+            if (Math.abs(attitude.pitch) > 65) {
+                ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+                ctx.strokeStyle = "#06b6d4";
+                ctx.lineWidth = 2;
+                ctx.fillRect(cx - 140, cy - 30, 280, 60);
+                ctx.strokeRect(cx - 140, cy - 30, 280, 60);
 
-            let diffH = currentHeading - sHeading;
-            if (diffH > 180) diffH -= 360;
-            if (diffH < -180) diffH += 360;
-            sHeading = (sHeading + diffH * 0.12 + 360) % 360;
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 13px system-ui, sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText("INCLINA IL TELEFONO", cx, cy - 6);
+                ctx.fillStyle = "#06b6d4";
+                ctx.font = "11px system-ui, sans-serif";
+                ctx.fillText("Punta la fotocamera verso l'orizzonte", cx, cy + 14);
+                return;
+            }
 
-            sPitch += (attitude.pitch - sPitch) * 0.12;
-            
-            let diffR = attitude.roll - sRoll;
-            if (diffR > 180) diffR -= 360;
-            if (diffR < -180) diffR += 360;
-            sRoll = sRoll + diffR * 0.12;
+            // 3. SMORZAMENTO ANGOLARE LERP AD ANGOLO MINIMO (SHORTEST PATH)
+            let diffH = shortestAngleDiff(currentHeading, sHeading);
+            sHeading = (sHeading + diffH * 0.15 + 360) % 360;
+
+            let diffP = attitude.pitch - sPitch;
+            sPitch = sPitch + diffP * 0.15;
+
+            let diffR = shortestAngleDiff(attitude.roll, sRoll);
+            sRoll = sRoll + diffR * 0.15;
 
             const fovV = isLandscape ? 45 : 65; 
             const fovH = isLandscape ? 70 : 50;
@@ -618,7 +582,7 @@
             ctx.translate(cx, cy);
             ctx.rotate(-sRoll * RAD);
 
-            // 1. ORIZZONTE ARTIFICIALE
+            // ORIZZONTE ARTIFICIALE
             ctx.strokeStyle = "#06b6d4";
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -626,7 +590,7 @@
             ctx.lineTo(w, horizonY);
             ctx.stroke();
 
-            // 2. ASSI VERTICALI PUNTI CARDINALI
+            // ASSI VERTICALI PUNTI CARDINALI
             const cardinals = [
                 { name: "N (0°)",   deg: 0 },
                 { name: "E (90°)",  deg: 90 },
@@ -665,7 +629,7 @@
                 }
             });
 
-            // 3. RENDERING ETICHETTE CIME MONTUOSE
+            // RENDERING ETICHETTE CIME MONTUOSE
             let visiblePeaks = activePeaks.filter(peak => {
                 let diffH = peak.bearing - finalHeading;
                 if (diffH > 180) diffH -= 360;
@@ -674,7 +638,6 @@
             });
 
             currentInViewCount = visiblePeaks.length;
-
             visiblePeaks.sort((a, b) => b.ele - a.ele);
 
             let placedBoxes = [];
@@ -753,7 +716,7 @@
                 }
             });
 
-            // AGGIORNAMENTO TELEMETRIA DIAGNOSTICA TEMPORIZZATO (MAX 2 VOLTE AL SECONDO) PER NON INQUINARE IL LOOP GRAFICO
+            // TELEMETRIA DIAGNOSTICA TEMPORIZZATA
             const now = Date.now();
             if (now - lastDiagTime > 500) {
                 lastDiagTime = now;
@@ -763,7 +726,7 @@
 
             ctx.restore();
 
-            // MIRINO CENTRALE FISSO SCHERMO
+            // MIRINO CENTRALE FISSO
             ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = 2;
             ctx.beginPath();
