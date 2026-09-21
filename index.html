@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Località & Ruota Aptica</title>
+    <title>PeakFinder AR - Gear Slider & Ultra-Reliable Network</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -62,9 +62,9 @@
         /* FASE 2: TELEMETRIA E CONTROLLI AR */
         .hud-overlay { 
             position: absolute; top: 15px; left: 15px; right: 15px;
-            background: rgba(15, 23, 42, 0.85); border: 1px solid #06b6d4; 
-            padding: 10px 14px; border-radius: 8px; font-size: 11px; z-index: 5; 
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5); font-family: monospace;
+            background: rgba(15, 23, 42, 0.88); border: 1px solid #06b6d4; 
+            padding: 10px 14px; border-radius: 12px; font-size: 11px; z-index: 5; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6); font-family: monospace;
             display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
         }
         .hud-title { font-weight: bold; font-size: 13px; text-transform: uppercase; color: #fff; width: 100%; border-bottom: 1px solid #06b6d4; padding-bottom: 4px; letter-spacing: 0.5px; }
@@ -81,53 +81,56 @@
             display: flex; flex-direction: column; align-items: center; gap: 10px; z-index: 5; 
         }
 
-        /* SLIDER RUOTA 3D GRADUATA CON INCISO MECCANICO */
-        .slider-box {
+        /* INGRANAGGIO MECCANICO 3D (VISTA DI PROFILO) */
+        .gear-panel {
             width: 100%; max-width: 380px; background: rgba(15, 23, 42, 0.95);
             border: 1px solid #06b6d4; padding: 12px 16px; border-radius: 20px;
             text-align: center; font-size: 12px; color: #fff;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.7);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
         }
 
-        .wheel-container {
-            position: relative;
-            width: 100%; height: 42px; margin-top: 8px;
-            background: linear-gradient(180deg, #020617 0%, #1e293b 50%, #020617 100%);
-            border: 1px solid #06b6d4; border-radius: 12px;
-            box-shadow: inset 0 4px 10px rgba(0,0,0,0.9), 0 0 12px rgba(6, 182, 212, 0.2);
+        .gear-wheel-wrapper {
+            position: relative; width: 100%; height: 48px; margin-top: 10px;
+            background: linear-gradient(180deg, #020617 0%, #334155 45%, #64748b 50%, #334155 55%, #020617 100%);
+            border: 2px solid #06b6d4; border-radius: 12px;
+            box-shadow: inset 0 6px 12px rgba(0,0,0,0.9), 0 0 15px rgba(6, 182, 212, 0.3);
             overflow: hidden; display: flex; align-items: center; justify-content: center;
         }
 
-        /* Tacche verticali dell'ingranaggio */
-        .wheel-ticks {
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            pointer-events: none; opacity: 0.4;
+        /* Denti dell'ingranaggio che ruotano di profilo */
+        .gear-teeth-pattern {
+            position: absolute; top: 0; bottom: 0; left: -100px; right: -100px;
+            pointer-events: none; opacity: 0.75;
             background: repeating-linear-gradient(
                 90deg,
-                transparent,
-                transparent 10px,
-                #06b6d4 10px,
-                #06b6d4 12px
+                rgba(15, 23, 42, 0.9) 0px,
+                rgba(15, 23, 42, 0.9) 8px,
+                #06b6d4 8px,
+                #e0f2fe 12px,
+                #06b6d4 16px,
+                rgba(15, 23, 42, 0.9) 16px,
+                rgba(15, 23, 42, 0.9) 24px
             );
+            transition: transform 0.05s ease-out;
         }
 
-        /* Mirino centrale dell'ingranaggio */
-        .wheel-center-line {
-            position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
-            background: #ef4444; box-shadow: 0 0 8px #ef4444;
-            pointer-events: none; z-index: 2;
+        /* Mirino / Indice centrale rosso fisso dell'ingranaggio */
+        .gear-pointer {
+            position: absolute; top: 0; bottom: 0; left: 50%; width: 3px;
+            background: #ef4444; box-shadow: 0 0 10px #ef4444;
+            transform: translateX(-50%); pointer-events: none; z-index: 3;
         }
 
-        input[type=range].wheel-input {
+        input[type=range].gear-slider {
             width: 100%; height: 100%; appearance: none; -webkit-appearance: none;
-            background: transparent; cursor: pointer; z-index: 3; margin: 0;
+            background: transparent; cursor: pointer; z-index: 4; margin: 0;
         }
 
-        input[type=range].wheel-input::-webkit-slider-thumb {
-            -webkit-appearance: none; width: 26px; height: 36px;
-            background: linear-gradient(90deg, #0284c7, #38bdf8, #0284c7);
-            border: 1px solid #fff; border-radius: 4px;
-            box-shadow: 0 0 10px rgba(56, 189, 248, 0.8);
+        input[type=range].gear-slider::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 32px; height: 42px;
+            background: linear-gradient(180deg, #38bdf8 0%, #0284c7 50%, #0369a1 100%);
+            border: 1px solid #ffffff; border-radius: 6px;
+            box-shadow: 0 0 12px rgba(56, 189, 248, 0.9);
         }
 
         .btn-primary { 
@@ -149,7 +152,7 @@
     <!-- FASE 1: CALIBRAZIONE TAP NORD -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>PEAKFINDER AR - LOCALITÀ & APTICO</h1>
+            <h1>PEAKFINDER AR - MULTI-SERVER & GEAR</h1>
             <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR.</p>
         </div>
 
@@ -178,17 +181,17 @@
 
     <!-- Controlli AR con Ingranaggio 3D & Vibrazione -->
     <div id="ar-controls" class="controls-bar hidden">
-        <div class="slider-box">
+        <div class="gear-panel">
             <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">10 km</b></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
                 Filtro tra <span id="dist-min" style="color:#fff;">5</span> e <span id="dist-max" style="color:#fff;">15</span> km (Buffer ±5 km)
             </div>
             
-            <!-- Ruota Ingranaggio Profilata -->
-            <div class="wheel-container">
-                <div class="wheel-ticks"></div>
-                <div class="wheel-center-line"></div>
-                <input type="range" id="depth-slider" class="wheel-input" min="5" max="35" step="1" value="10">
+            <!-- Ingranaggio di Profilo -->
+            <div class="gear-wheel-wrapper">
+                <div id="gear-teeth" class="gear-teeth-pattern"></div>
+                <div class="gear-pointer"></div>
+                <input type="range" id="depth-slider" class="gear-slider" min="5" max="35" step="1" value="10">
             </div>
         </div>
         <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
@@ -219,27 +222,42 @@
         let lastQueryLat = null, lastQueryLon = null;
         let isFetching = false;
 
+        // LISTA SERVER ROBUSTI CON FALLBACK MULTIPLO
+        const serverEndpoints = [
+            { name: "Overpass (Main)", url: "https://overpass-api.de/api/interpreter", type: "overpass" },
+            { name: "Overpass (Kumi)", url: "https://overpass.kumi.systems/api/interpreter", type: "overpass" },
+            { name: "Overpass (Swiss)", url: "https://overpass.osm.ch/api/interpreter", type: "overpass" },
+            { name: "Overpass (Taiwan)", url: "https://overpass.nchc.org.tw/api/interpreter", type: "overpass" },
+            { name: "Overpass (LZ4)", url: "https://lz4.overpass-api.de/api/interpreter", type: "overpass" },
+            { name: "Wikipedia API", url: "https://it.wikipedia.org/w/api.php", type: "wikipedia" }
+        ];
+
         window.addEventListener('DOMContentLoaded', () => {
             initSensors();
             initGPS();
-            setupSliderWithHaptics();
+            setupGearSlider();
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
             requestAnimationFrame(renderLoop);
         });
 
-        // SLIDER APTICO 3D (Simula lo scatto dell'ingranaggio)
-        function setupSliderWithHaptics() {
+        // INGRANAGGIO 3D CHE GIRA DI PROFILO + VIBRAZIONE APTICA
+        function setupGearSlider() {
             const slider = document.getElementById('depth-slider');
+            const teeth = document.getElementById('gear-teeth');
 
             slider.addEventListener('input', () => {
                 const currentVal = parseInt(slider.value);
                 
-                // Vibrazione aptica ad ogni cambio di chilometro
+                // Animazione scorrimento dei denti dell'ingranaggio
+                const offsetPixels = -(currentVal * 12);
+                teeth.style.transform = `translateX(${offsetPixels}px)`;
+
+                // Vibrazione ad ogni scatto di chilometro
                 if (currentVal !== lastVibratedVal) {
                     lastVibratedVal = currentVal;
                     if ('vibrate' in navigator) {
-                        navigator.vibrate(8); // Impulso breve a scatto
+                        navigator.vibrate(10);
                     }
                 }
 
@@ -263,7 +281,7 @@
             }
         }
 
-        // GEOLOCALIZZAZIONE GPS & REVERSE GEOCODING (Nome Comune)
+        // GEOLOCALIZZAZIONE GPS & REVERSE GEOCODING
         function initGPS() {
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(
@@ -274,11 +292,10 @@
 
                         document.getElementById('v-gps').innerText = `${userLat.toFixed(3)}°, ${userLon.toFixed(3)}°`;
 
-                        // Ottiene il nome della località corrente
                         fetchLocationName(userLat, userLon);
 
                         if (shouldRefetchRadial(userLat, userLon)) {
-                            fetchPeaksMultiEngine(userLat, userLon);
+                            fetchPeaksReliablePipeline(userLat, userLon);
                         }
                     },
                     err => {
@@ -291,7 +308,6 @@
             }
         }
 
-        // REVERSE GEOCODING GRATUITO ED ISTANTANEO
         async function fetchLocationName(lat, lon) {
             try {
                 const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=it`);
@@ -313,7 +329,7 @@
 
         function manualRetryFetch() {
             if (userLat !== null && userLon !== null) {
-                fetchPeaksMultiEngine(userLat, userLon, true);
+                fetchPeaksReliablePipeline(userLat, userLon, true);
             }
         }
 
@@ -341,7 +357,8 @@
             }
         }
 
-        async function fetchPeaksMultiEngine(lat, lon, force = false) {
+        // MOTORINO DI CONNESSIONE AD ALTA AFFIDABILITÀ (6 SERVER SEQUENZIALI)
+        async function fetchPeaksReliablePipeline(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
 
@@ -352,57 +369,71 @@
             lastQueryLat = lat;
             lastQueryLon = lon;
 
-            statusSource.innerText = "Overpass POST...";
-            const overpassQuery = `[out:json][timeout:6];node["natural"="peak"]["name"](around:${FETCH_RADIAL_METERS},${lat},${lon});out body;`;
-            
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 4000);
+            const overpassQuery = `[out:json][timeout:5];node["natural"="peak"]["name"](around:${FETCH_RADIAL_METERS},${lat},${lon});out body;`;
 
-                const res = await fetch("https://overpass-api.de/api/interpreter", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: "data=" + encodeURIComponent(overpassQuery),
-                    signal: controller.signal
-                });
-                clearTimeout(timeoutId);
+            for (let i = 0; i < serverEndpoints.length; i++) {
+                const srv = serverEndpoints[i];
+                statusSource.innerText = `${srv.name}...`;
 
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data && data.elements && data.elements.length > 0) {
-                        statusSource.innerText = "OpenStreetMap";
-                        processOverpassData(data.elements, lat, lon);
-                        isFetching = false;
-                        return;
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 3500); // Max 3.5s per tentativo
+
+                    let res = null;
+
+                    if (srv.type === "overpass") {
+                        // Tenta POST prima, se fallisce tenta GET sullo stesso server
+                        try {
+                            res = await fetch(srv.url, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                                body: "data=" + encodeURIComponent(overpassQuery),
+                                signal: controller.signal
+                            });
+                        } catch (errPost) {
+                            res = await fetch(`${srv.url}?data=${encodeURIComponent(overpassQuery)}`, {
+                                signal: controller.signal
+                            });
+                        }
+
+                        clearTimeout(timeoutId);
+
+                        if (res && res.ok) {
+                            const data = await res.json();
+                            if (data && data.elements && data.elements.length > 0) {
+                                statusSource.innerText = `${srv.name} (Live)`;
+                                processOverpassData(data.elements, lat, lon);
+                                isFetching = false;
+                                return;
+                            }
+                        }
+                    } else if (srv.type === "wikipedia") {
+                        const wikiUrl = `${srv.url}?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=${FETCH_RADIAL_METERS}&gslimit=50&format=json&origin=*`;
+                        res = await fetch(wikiUrl, { signal: controller.signal });
+                        clearTimeout(timeoutId);
+
+                        if (res && res.ok) {
+                            const data = await res.json();
+                            if (data && data.query && data.query.geosearch && data.query.geosearch.length > 0) {
+                                statusSource.innerText = "Wikipedia (Live)";
+                                processWikipediaData(data.query.geosearch, lat, lon);
+                                isFetching = false;
+                                return;
+                            }
+                        }
                     }
+                } catch (e) {
+                    // Passa immediatamente al server successivo in caso di errore o timeout
                 }
-            } catch (e) { }
+            }
 
-            // Fallback Wikipedia
-            statusSource.innerText = "Wikipedia Live...";
-            const wikiUrl = `https://it.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=${FETCH_RADIAL_METERS}&gslimit=50&format=json&origin=*`;
-
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-                const res = await fetch(wikiUrl, { signal: controller.signal });
-                clearTimeout(timeoutId);
-
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data && data.query && data.query.geosearch && data.query.geosearch.length > 0) {
-                        statusSource.innerText = "Wikipedia";
-                        processWikipediaData(data.query.geosearch, lat, lon);
-                        isFetching = false;
-                        return;
-                    }
-                }
-            } catch (e) { }
-
+            // Se tutti e 6 i server falliscono, imposta l'auto-retry dopo 6 secondi
             isFetching = false;
-            statusSource.innerText = "Errore Connessione";
+            statusSource.innerText = "Rete Occupata (Auto-Retry)";
             retryBtn.classList.remove('hidden');
+            setTimeout(() => {
+                if (allDownloadedPeaks.length === 0) fetchPeaksReliablePipeline(lat, lon, true);
+            }, 6000);
         }
 
         function processOverpassData(elements, lat, lon) {
@@ -566,7 +597,6 @@
             requestAnimationFrame(renderLoop);
         }
 
-        // RENDERING ETICHETTE CON ALTEZZA ASTA PROPORZIONALE ALL'ALTITUDINE REALE
         function renderARHUD(attitude) {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
@@ -650,7 +680,7 @@
                 }
             });
 
-            // 3. RENDERING ETICHETTE (ALTEZZA ASTA SCALATA IN BASE ALL'ALTITUDINE REALE)
+            // 3. RENDERING ETICHETTE CIME (ASTA PROPORZIONALE ALL'ALTITUDINE)
             let visiblePeaks = activePeaks.filter(peak => {
                 let diffH = peak.bearing - finalHeading;
                 if (diffH > 180) diffH -= 360;
@@ -658,7 +688,6 @@
                 return Math.abs(diffH) <= fovH / 2;
             });
 
-            // Priorità alle cime più alte
             visiblePeaks.sort((a, b) => b.ele - a.ele);
 
             let placedBoxes = [];
@@ -680,7 +709,6 @@
                     peak.smoothY += (targetY - peak.smoothY) * 0.15;
                 }
 
-                // L'ALTEZZA DELL'ASTA VARIA IN BASE ALLA QUOTA REALE (da 15px fino a 55px per vette > 3000m)
                 const stemLength = 15 + Math.min(40, (peak.ele / 3500) * 40);
 
                 const boxW = 120;
@@ -690,7 +718,6 @@
 
                 const currentBox = { x1: boxX, y1: boxY, x2: boxX + boxW, y2: boxY + boxH };
 
-                // Anti-sovrapposizione 2D
                 let isColliding = placedBoxes.some(b => 
                     !(currentBox.x2 < b.x1 || currentBox.x1 > b.x2 || currentBox.y2 < b.y1 || currentBox.y1 > b.y2)
                 );
@@ -705,7 +732,7 @@
                     ctx.arc(peak.smoothX, peak.smoothY, 5, 0, Math.PI * 2);
                     ctx.fill();
 
-                    // Asta verticale proporzionale alla quota della montagna
+                    // Asta verticale
                     ctx.strokeStyle = "rgba(239, 68, 68, 0.7)";
                     ctx.lineWidth = 1.5;
                     ctx.beginPath();
@@ -713,7 +740,7 @@
                     ctx.lineTo(peak.smoothX, boxY + boxH);
                     ctx.stroke();
 
-                    // Riquadro Etichetta
+                    // Box Etichetta
                     ctx.fillStyle = "rgba(15, 23, 42, 0.95)";
                     ctx.strokeStyle = "#ef4444";
                     ctx.lineWidth = 1.5;
@@ -721,7 +748,7 @@
                     ctx.fillRect(boxX, boxY, boxW, boxH);
                     ctx.strokeRect(boxX, boxY, boxW, boxH);
 
-                    // Testi Nome & Quota/Distanza
+                    // Testo Nome & Quota/Distanza
                     ctx.fillStyle = "#ffffff";
                     ctx.font = "bold 11px system-ui, sans-serif";
                     ctx.textAlign = "center";
@@ -732,7 +759,6 @@
                     ctx.font = "10px monospace";
                     ctx.fillText(`${peak.ele}m | ${peak.dist.toFixed(1)}km`, peak.smoothX, boxY + 26);
                 } else {
-                    // Cima secondaria nascosta: mostra solo punto guida
                     ctx.fillStyle = "rgba(239, 68, 68, 0.4)";
                     ctx.beginPath();
                     ctx.arc(peak.smoothX, peak.smoothY, 3, 0, Math.PI * 2);
