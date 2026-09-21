@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Perfect Filter</title>
+    <title>PeakFinder AR - Smooth Render & Fast Peaks</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -113,7 +113,7 @@
     <!-- FASE 1: CALIBRAZIONE TAP NORD -->
     <div id="calib-screen" class="calib-container" onclick="calibrateAndStartAR()">
         <div class="calib-header">
-            <h1>PEAKFINDER AR - REALE LIVE</h1>
+            <h1>PEAKFINDER AR - LIVE REALE</h1>
             <p>1. Orienta la parte superiore del telefono verso il <b>NORD REALE</b>.<br>2. Tocca lo schermo per attivare la vista AR.</p>
         </div>
 
@@ -152,14 +152,13 @@
         </div>
     </div>
 
-    <!-- Controlli AR con Slider fino a 60 KM -->
+    <!-- Controlli AR con Slider -->
     <div id="ar-controls" class="controls-bar hidden">
         <div class="slider-box">
             <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">20 km</b></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
                 Visibili tra <span id="dist-min" style="color:#fff;">10</span> e <span id="dist-max" style="color:#fff;">30</span> km (Buffer ±10 km)
             </div>
-            <!-- Esteso fino a 60 km per catturare montagne reali anche da lontano -->
             <input type="range" id="depth-slider" min="5" max="60" step="1" value="20">
         </div>
         <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
@@ -184,11 +183,12 @@
         
         let allDownloadedPeaks = [];
         let activePeaks = [];
+        let currentInViewCount = 0;
 
         let lastQueryLat = null, lastQueryLon = null;
         let isFetching = false;
+        let lastDiagTime = 0;
 
-        // REGEX RIGOROSA PER SOLI NOMI MONTUOSI (Esclude parole con sottostringhe come Collezione)
         const strictMountainRegex = /\b(monte|m\.|cima|corno|pizzo|sasso|rocca|colle|colletto|bric|cresta|alpe|zucco|punta)\b/i;
         const excludedRegex = /collezione|collegio|stazione|piazza|palazzo|via|viale|corso|strada|ospedale|scuola|museo/i;
 
@@ -301,7 +301,7 @@
             document.getElementById('d-unoccluded').innerText = unoccludedCount;
         }
 
-        // SCARICAMENTO E FILTRAGGIO RIGOROSO MONTI
+        // SCARICAMENTO RETE CON OVERPASS (TIMEOUT ESTESO A 8s) + WIKIPEDIA
         async function fetchPeaksReliable(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
@@ -313,19 +313,19 @@
             lastQueryLat = lat;
             lastQueryLon = lon;
 
-            // 1. OVERPASS API (Fino a 50 km per prendere cime reali)
-            statusSrv.innerText = "Overpass API (50km)...";
+            // 1. OVERPASS API (Timeout esteso a 8s per chiamate da mobile 4G/5G)
+            statusSrv.innerText = "Overpass API (30km)...";
             const overpassServers = [
                 "https://overpass-api.de/api/interpreter",
                 "https://overpass.kumi.systems/api/interpreter"
             ];
 
-            const ql = `[out:json][timeout:6];node["natural"="peak"]["name"](around:50000,${lat},${lon});out body 200;`;
+            const ql = `[out:json][timeout:8];node["natural"="peak"]["name"](around:30000,${lat},${lon});out body 200;`;
 
             for (let baseUrl of overpassServers) {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 4500);
+                    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
                     const fullUrl = `${baseUrl}?data=${encodeURIComponent(ql)}`;
                     const res = await fetch(fullUrl, { signal: controller.signal });
@@ -348,12 +348,12 @@
                 } catch (e) { }
             }
 
-            // 2. FALLBACK WIKIPEDIA GEODATA (Filtro rigoroso con Regex \b)
+            // 2. FALLBACK WIKIPEDIA GEODATA
             statusSrv.innerText = "Wikipedia Geosearch...";
             try {
                 const wikiGeoUrl = `https://it.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${lat}%7C${lon}&gsradius=10000&gslimit=100&format=json&origin=*`;
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 4000);
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
 
                 const res = await fetch(wikiGeoUrl, { signal: controller.signal });
                 clearTimeout(timeoutId);
@@ -365,7 +365,7 @@
                         document.getElementById('d-raw').innerText = rawLen;
                         
                         if (rawLen > 0) {
-                            statusSrv.innerText = "Wikipedia (Filtrata Rigorosa)";
+                            statusSrv.innerText = "Wikipedia (Filtrata)";
                             processWikipediaData(data.query.geosearch, lat, lon);
                             isFetching = false;
                             return;
@@ -409,10 +409,7 @@
             let parsed = items.map(item => {
                 const name = item.title;
 
-                // Esclude fermate, musei e luoghi urbani
                 if (excludedRegex.test(name)) return null;
-
-                // Accetta solo entità con confini di parola corretti (\bmonte\b, \bcolle\b)
                 if (!strictMountainRegex.test(name)) return null;
 
                 const distKm = item.dist / 1000;
@@ -515,12 +512,15 @@
         }
 
         function initSensors() {
-            window.addEventListener('deviceorientation', (e) => {
+            const handleOrientation = (e) => {
                 if (e.alpha === null || e.beta === null || e.gamma === null) return;
                 rawAlpha = e.alpha || 0;
                 rawBeta = e.beta || 0;
                 rawGamma = e.gamma || 0;
-            });
+            };
+
+            window.addEventListener('deviceorientation', handleOrientation, true);
+            window.addEventListener('deviceorientationabsolute', handleOrientation, true);
         }
 
         function getGravityAttitude(alpha, beta, gamma) {
@@ -566,16 +566,18 @@
         }
 
         function renderLoop() {
-            const attitude = getGravityAttitude(rawAlpha, rawBeta, rawGamma);
-            currentHeading = attitude.heading;
+            try {
+                const attitude = getGravityAttitude(rawAlpha, rawBeta, rawGamma);
+                currentHeading = attitude.heading;
 
-            if (isARActive) {
-                renderARHUD(attitude);
-            }
-
+                if (isARActive) {
+                    renderARHUD(attitude);
+                }
+            } catch (err) { }
             requestAnimationFrame(renderLoop);
         }
 
+        // RENDERING AR CON AGGIORNAMENTO HUD SEPARATO E TEMPORIZZATO (FLUIDITÀ SBLOCCATA A 60 FPS)
         function renderARHUD(attitude) {
             const canvas = document.getElementById('ar-canvas');
             const ctx = canvas.getContext('2d');
@@ -671,7 +673,7 @@
                 return Math.abs(diffH) <= fovH / 2;
             });
 
-            document.getElementById('d-inview').innerText = visiblePeaks.length;
+            currentInViewCount = visiblePeaks.length;
 
             visiblePeaks.sort((a, b) => b.ele - a.ele);
 
@@ -751,11 +753,17 @@
                 }
             });
 
-            document.getElementById('v-labels').innerText = renderedLabelsCount;
+            // AGGIORNAMENTO TELEMETRIA DIAGNOSTICA TEMPORIZZATO (MAX 2 VOLTE AL SECONDO) PER NON INQUINARE IL LOOP GRAFICO
+            const now = Date.now();
+            if (now - lastDiagTime > 500) {
+                lastDiagTime = now;
+                document.getElementById('d-inview').innerText = currentInViewCount;
+                document.getElementById('v-labels').innerText = renderedLabelsCount;
+            }
 
             ctx.restore();
 
-            // MIRINO CENTRALE FISSO
+            // MIRINO CENTRALE FISSO SCHERMO
             ctx.strokeStyle = "#ef4444";
             ctx.lineWidth = 2;
             ctx.beginPath();
