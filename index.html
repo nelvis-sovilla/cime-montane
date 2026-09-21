@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - Fast BBox Engine</title>
+    <title>PeakFinder AR - High Reliability Engine</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -155,11 +155,11 @@
     <!-- Controlli AR con Slider -->
     <div id="ar-controls" class="controls-bar hidden">
         <div class="slider-box">
-            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">25 km</b></div>
+            <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">15 km</b></div>
             <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
-                Visibili tra <span id="dist-min" style="color:#fff;">15</span> e <span id="dist-max" style="color:#fff;">35</span> km (Buffer ±10 km)
+                Visibili tra <span id="dist-min" style="color:#fff;">5</span> e <span id="dist-max" style="color:#fff;">25</span> km (Buffer ±10 km)
             </div>
-            <input type="range" id="depth-slider" min="5" max="60" step="1" value="25">
+            <input type="range" id="depth-slider" min="5" max="60" step="1" value="15">
         </div>
         <button class="btn-secondary" onclick="reopenCalibration()">Ricalibra Nord</button>
     </div>
@@ -179,7 +179,7 @@
 
         // GPS e Dati Cime
         let userLat = null, userLon = null, userAlt = 0;
-        let targetDistanceKm = 25;
+        let targetDistanceKm = 15;
         
         let allDownloadedPeaks = [];
         let activePeaks = [];
@@ -298,7 +298,7 @@
             document.getElementById('d-unoccluded').innerText = unoccludedCount;
         }
 
-        // SCARICAMENTO VELOCE VIA Bounding Box Spaziale (BBox + qt)
+        // SCARICAMENTO RETE AD ALTA TOLLERANZA (TIMEOUT 12 SECONDI PER 4G/5G)
         async function fetchPeaksBBox(lat, lon, force = false) {
             if (isFetching && !force) return;
             isFetching = true;
@@ -310,8 +310,7 @@
             lastQueryLat = lat;
             lastQueryLon = lon;
 
-            // Calcolo Bounding Box per raggio di 50 km (estremamente veloce da calcolare lato server)
-            const radiusKm = 50;
+            const radiusKm = 35; // Raggio 35 km (cattura Colli Bolognesi e Appennino)
             const latDelta = radiusKm / 111.0;
             const lonDelta = radiusKm / (111.0 * Math.cos(lat * RAD));
 
@@ -320,8 +319,7 @@
             const minLon = (lon - lonDelta).toFixed(4);
             const maxLon = (lon + lonDelta).toFixed(4);
 
-            // Query BBox ad altissima velocità di esecuzione (0.3s)
-            const ql = `[out:json][timeout:10];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
+            const ql = `[out:json][timeout:12];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
 
             const overpassServers = [
                 "https://overpass-api.de/api/interpreter",
@@ -333,14 +331,20 @@
 
             for (let i = 0; i < overpassServers.length; i++) {
                 const baseUrl = overpassServers[i];
-                statusSrv.innerText = `Server ${i + 1}/${overpassServers.length}...`;
+                statusSrv.innerText = `Srv ${i + 1}/${overpassServers.length} (Attesa 4G)...`;
 
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+                    const timeoutId = setTimeout(() => controller.abort(), 12000); // Extended 12s timeout for mobile 4G
 
-                    const fullUrl = `${baseUrl}?data=${encodeURIComponent(ql)}`;
-                    const res = await fetch(fullUrl, { signal: controller.signal });
+                    const params = new URLSearchParams();
+                    params.append('data', ql);
+
+                    const res = await fetch(baseUrl, {
+                        method: 'POST',
+                        body: params,
+                        signal: controller.signal
+                    });
                     clearTimeout(timeoutId);
 
                     if (res.ok) {
@@ -364,7 +368,7 @@
             statusSrv.innerText = "Errore Connessione Server";
             document.getElementById('d-raw').innerText = "0";
             document.getElementById('d-parsed').innerText = "0";
-            document.getElementById('d-samples').innerText = "Nessun server ha risposto. Tocca Riprova.";
+            document.getElementById('d-samples').innerText = "Connessione fallita. Tocca Riprova.";
             retryBtn.classList.remove('hidden');
         }
 
@@ -374,7 +378,7 @@
                 const name = el.tags.name || el.tags['name:it'] || el.tags.official_name;
                 if (!name) return null;
 
-                const ele = parseFloat(el.tags.ele) || 1000;
+                const ele = parseFloat(el.tags.ele) || 300;
                 const distKm = calculateDistance(lat, lon, el.lat, el.lon);
                 const bearing = calculateBearing(lat, lon, el.lat, el.lon);
                 const eleDiffMeters = ele - userAlt;
