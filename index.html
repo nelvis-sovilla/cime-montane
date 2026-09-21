@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - v2.6.0 Debug Terminal</title>
+    <title>PeakFinder AR - v2.8.0 Global Engine</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -13,7 +13,7 @@
 
         .hidden { display: none !important; }
 
-        /* FASE 1: CALIBRAZIONE TAP */
+        /* FASE 1: CALIBRAZIONE E AVVIO */
         .calib-container { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             display: flex; flex-direction: column; justify-content: space-between; 
@@ -42,7 +42,7 @@
             border-left: 15px solid transparent; border-right: 15px solid transparent; border-bottom: 22px solid #ef4444;
         }
 
-        /* FASE 2: TERMINALE DEBUG DI AVVIO */
+        /* FASE 2: TERMINALE DEBUG AGNOSTICO */
         .debug-container {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: #020617; z-index: 25; display: flex; flex-direction: column; padding: 20px;
@@ -53,11 +53,6 @@
             padding: 10px; overflow-y: auto; font-family: monospace; font-size: 11px; color: #cbd5e1;
             line-height: 1.4; word-wrap: break-word;
         }
-        .log-info { color: #94a3b8; }
-        .log-warn { color: #f59e0b; }
-        .log-error { color: #ef4444; }
-        .log-success { color: #10b981; font-weight: bold; }
-        .log-url { color: #3b82f6; font-size: 9px; }
 
         .debug-actions { display: flex; gap: 10px; margin-top: 15px; }
         .btn-debug {
@@ -92,8 +87,8 @@
     <div id="calib-screen" class="calib-container">
         <div class="calib-header">
             <h1>PEAKFINDER AR</h1>
-            <div class="version-tag">VERSIONE BOOT v2.6.0</div>
-            <p style="margin-top: 14px;">1. Orienta il telefono verso il <b>NORD REALE</b>.<br>2. Tocca AVVIA per scaricare i dati a fotocamera spenta.</p>
+            <div class="version-tag">VERSIONE v2.8.0 (Global Engine)</div>
+            <p style="margin-top: 14px;">1. Orienta il telefono verso il <b>NORD REALE</b>.<br>2. Tocca AVVIA per scaricare i dati territorio.</p>
         </div>
         <div class="calib-body">
             <div class="fixed-arrow-box"><div class="fixed-needle"></div></div>
@@ -101,9 +96,9 @@
         <button class="btn-primary" onclick="startBootSequence()">AVVIA DOWNLOAD CIME</button>
     </div>
 
-    <!-- FASE 2: TERMINALE DI DEBUG (Fotocamera Spenta) -->
+    <!-- FASE 2: TERMINALE DI DEBUG -->
     <div id="debug-screen" class="debug-container hidden">
-        <div class="debug-header">Terminal Avvio Sistema...</div>
+        <div class="debug-header">Terminal Avvio Sistema v2.8.0...</div>
         <div id="debug-console"></div>
         <div class="debug-actions hidden" id="debug-error-actions">
             <button class="btn-debug" onclick="copyDebugLog()">Copia Log Errori</button>
@@ -112,7 +107,7 @@
         <button id="btn-force-ar" class="btn-debug hidden" style="margin-top:10px; background:#475569;" onclick="enterARMode()">Forza AR (Senza Dati)</button>
     </div>
 
-    <!-- FASE 3: AR VIEW (Fotocamera e Canvas) -->
+    <!-- FASE 3: AR VIEW LAYER -->
     <div id="ar-view-layer" class="hidden">
         <video id="camera-feed" autoplay playsinline muted></video>
         <canvas id="ar-canvas"></canvas>
@@ -126,11 +121,11 @@
 
         <div id="ar-controls" class="controls-bar">
             <div class="slider-box">
-                <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">25 km</b></div>
+                <div>Profondità Cime: <b id="dist-target" style="color:#06b6d4;">20 km</b></div>
                 <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">
-                    Visibili tra <span id="dist-min" style="color:#fff;">15</span> e <span id="dist-max" style="color:#fff;">35</span> km (Buffer ±10 km)
+                    Visibili tra <span id="dist-min" style="color:#fff;">10</span> e <span id="dist-max" style="color:#fff;">30</span> km (Buffer ±10 km)
                 </div>
-                <input type="range" id="depth-slider" min="5" max="60" step="1" value="25">
+                <input type="range" id="depth-slider" min="5" max="60" step="1" value="20">
             </div>
             <button class="btn-secondary" onclick="location.reload()">Riavvia App</button>
         </div>
@@ -147,7 +142,7 @@
         let isARActive = false, absoluteCompassEnabled = false;
 
         let userLat = null, userLon = null, userAlt = 0;
-        let targetDistanceKm = 25;
+        let targetDistanceKm = 20;
         let allDownloadedPeaks = [], activePeaks = [];
         let currentInViewCount = 0, lastDiagTime = 0;
 
@@ -157,11 +152,10 @@
         function logMsg(text, type="info") {
             const consoleDiv = document.getElementById('debug-console');
             const time = new Date().toLocaleTimeString();
-            let color = "#94a3b8"; // info
+            let color = "#94a3b8";
             if (type === "warn") color = "#f59e0b";
             if (type === "error") color = "#ef4444";
             if (type === "success") color = "#10b981";
-            if (type === "url") color = "#3b82f6";
 
             const logLine = `[${time}] ${text}`;
             fullDebugLogText += logLine + "\n";
@@ -173,19 +167,18 @@
             navigator.clipboard.writeText(fullDebugLogText).then(() => {
                 alert("Log copiato negli appunti! Incollalo nella chat.");
             }).catch(err => {
-                prompt("Impossibile copiare in automatico. Copia il testo sottostante:", fullDebugLogText);
+                prompt("Copia manualmente il testo seguente:", fullDebugLogText);
             });
         }
 
-        // --- FASE 1 -> FASE 2 ---
+        // --- AVVIO E GEOLOCALIZZAZIONE GENERICA ---
         function startBootSequence() {
             calibratedOffset = currentHeading;
             document.getElementById('calib-screen').classList.add('hidden');
             document.getElementById('debug-screen').classList.remove('hidden');
             
-            logMsg("== PEAKFINDER BOOT SEQUENCE ==", "success");
-            logMsg("Fotocamera e Canvas disattivati per risparmio CPU.", "info");
-            logMsg("Richiesta coordinate GPS in corso...", "warn");
+            logMsg("== BOOT ENGINE v2.8.0 GLOBAL ==", "success");
+            logMsg("Acquisizione sensori di posizione in corso...", "info");
 
             initSensors();
             
@@ -201,13 +194,13 @@
                             const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${userLat}&longitude=${userLon}&localityLanguage=it`);
                             if (res.ok) {
                                 const data = await res.json();
-                                const loc = data.locality || data.city || "Sconosciuta";
+                                const loc = data.locality || data.city || data.principalSubdivision || "Posizione Reale";
                                 document.getElementById('hud-location-title').innerText = loc.toUpperCase();
                                 logMsg(`Località rilevata: ${loc}`, "info");
                             }
-                        } catch (e) { logMsg("Geocoding inverso fallito.", "warn"); }
+                        } catch (e) { logMsg("Reverse geocoding non disponibile.", "warn"); }
 
-                        executeNetworkFetchPipeline();
+                        executeGlobalNetworkPipeline();
                     },
                     err => {
                         logMsg(`ERRORE GPS: ${err.message}`, "error");
@@ -225,15 +218,15 @@
             document.getElementById('debug-error-actions').classList.add('hidden');
             document.getElementById('btn-force-ar').classList.add('hidden');
             logMsg("--- RITENTATIVO MANUALE RETE ---", "warn");
-            executeNetworkFetchPipeline();
+            executeGlobalNetworkPipeline();
         }
 
-        // --- FASE 2: SCARICAMENTO RETE PURO ---
-        async function executeNetworkFetchPipeline() {
+        // --- PIPELINE DI RETE GENERICA GLOBALE ---
+        async function executeGlobalNetworkPipeline() {
             allDownloadedPeaks = [];
-            logMsg("Avvio pipeline di rete (Timeout max: 15s per server)...", "info");
 
-            const radiusKm = 40;
+            // Calcolo generico Bounding Box (Raggio universale 30km)
+            const radiusKm = 30;
             const latDelta = radiusKm / 111.0;
             const lonDelta = radiusKm / (111.0 * Math.cos(userLat * RAD));
 
@@ -242,53 +235,57 @@
             const minLon = (userLon - lonDelta).toFixed(4);
             const maxLon = (userLon + lonDelta).toFixed(4);
 
-            const ql = `[out:json][timeout:15];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt;`;
-            
-            const overpassServers = [
-                "https://overpass-api.de/api/interpreter",
-                "https://lz4.overpass-api.de/api/interpreter",
-                "https://overpass.kumi.systems/api/interpreter"
+            const ql = `[out:json][timeout:15];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt 300;`;
+            const qlEncoded = encodeURIComponent(ql);
+
+            // Array di endpoint generici ridondanti
+            const endpoints = [
+                { name: "OSM Main Engine", url: `https://overpass-api.de/api/interpreter?data=${qlEncoded}` },
+                { name: "OSM Kumi Engine", url: `https://overpass.kumi.systems/api/interpreter?data=${qlEncoded}` },
+                { name: "OSM LZ4 Engine", url: `https://lz4.overpass-api.de/api/interpreter?data=${qlEncoded}` },
+                { name: "Global Anti-Ban Proxy", url: `https://api.allorigins.win/raw?url=${encodeURIComponent('https://overpass-api.de/api/interpreter?data=' + qlEncoded)}` }
             ];
 
-            // TENTATIVI OVERPASS
-            for (let i = 0; i < overpassServers.length; i++) {
-                const url = overpassServers[i];
-                logMsg(`Contatto Overpass Server ${i+1}: ${url.split('//')[1]}`, "warn");
+            for (let i = 0; i < endpoints.length; i++) {
+                const ep = endpoints[i];
+                logMsg(`Richiesta dati (${ep.name})...`, "warn");
                 
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => { controller.abort(); logMsg("-> Timeout forzato lato client (15s superati)", "error"); }, 15000);
+                    const timeoutId = setTimeout(() => { controller.abort(); logMsg("-> Timeout server superato (15s)", "error"); }, 15000);
 
                     const start = Date.now();
-                    const res = await fetch(`${url}?data=${encodeURIComponent(ql)}`, { signal: controller.signal });
+                    const res = await fetch(ep.url, { signal: controller.signal });
                     const ping = Date.now() - start;
                     clearTimeout(timeoutId);
 
-                    logMsg(`-> Risposta ricevuta in ${ping}ms. Status HTTP: ${res.status}`, res.ok ? "info" : "error");
+                    logMsg(`-> Risposta in ${ping}ms. HTTP: ${res.status}`, res.ok ? "info" : "error");
 
                     if (res.ok) {
                         const data = await res.json();
-                        logMsg(`-> JSON parsato. Nodi trovati: ${data.elements ? data.elements.length : 0}`, "info");
                         if (data.elements && data.elements.length > 0) {
+                            logMsg(`-> Nodi geografici trovati: ${data.elements.length}`, "info");
                             processOverpassData(data.elements);
-                            logMsg(`=> SUCCESSO! ${allDownloadedPeaks.length} cime filtrate con successo.`, "success");
-                            logMsg("Avvio Motore Grafico AR in 2 secondi...", "success");
-                            setTimeout(enterARMode, 2000);
-                            return; // Stop pipeline
+                            logMsg(`=> SUCCESSO! ${allDownloadedPeaks.length} cime caricate.`, "success");
+                            logMsg("Avvio fotocamera e interfaccia AR...", "success");
+                            setTimeout(enterARMode, 1500);
+                            return;
                         } else {
-                            logMsg("-> Nessun nodo in risposta, provo il prossimo server.", "warn");
+                            logMsg("-> Nessun nodo 'natural=peak' presente in questa area.", "warn");
                         }
-                    } else {
-                        logMsg(`-> Errore HTTP: ${res.statusText}`, "error");
                     }
                 } catch (e) {
-                    logMsg(`-> Eccezione Fetch: ${e.name} - ${e.message}`, "error");
+                    if (e.name === "TypeError") {
+                        logMsg(`-> Blocco di rete (CORS/IP). Switching al proxy...`, "error");
+                    } else {
+                        logMsg(`-> Eccezione Fetch: ${e.message}`, "error");
+                    }
                 }
             }
 
-            // FALLBACK WIKIDATA
-            logMsg("Tutti i server Overpass falliti. Avvio fallback Wikidata SPARQL...", "warn");
-            const sparql = `SELECT ?item ?itemLabel ?lat ?lon ?ele WHERE { SERVICE wikibase:around { ?item wdt:P625 ?location . bd:serviceParam wikibase:center "Point(${userLon} ${userLat})"^^geo:wktLiteral . bd:serviceParam wikibase:radius "40" . } ?item wdt:P31/wdt:279* wd:Q8502 . ?item p:P625/psv:P625 ?locNode . ?locNode wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon . OPTIONAL { ?item wdt:P2044 ?ele . } SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". } } LIMIT 150`;
+            // FALLBACK GENERICO WIKIDATA (Entità WDT Mountain Q8502)
+            logMsg("Chiamata di riserva su Wikidata SPARQL Globale...", "warn");
+            const sparql = `SELECT ?item ?itemLabel ?lat ?lon ?ele WHERE { SERVICE wikibase:around { ?item wdt:P625 ?location . bd:serviceParam wikibase:center "Point(${userLon} ${userLat})"^^geo:wktLiteral . bd:serviceParam wikibase:radius "30" . } ?item wdt:P31 wd:Q8502 . ?item p:P625/psv:P625 ?locNode . ?locNode wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon . OPTIONAL { ?item wdt:P2044 ?ele . } SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". } } LIMIT 100`;
 
             try {
                 const controller = new AbortController();
@@ -296,42 +293,41 @@
                 const res = await fetch(`https://query.wikidata.org/sparql?query=${encodeURIComponent(sparql)}&format=json`, { headers: { 'Accept': 'application/sparql-results+json' }, signal: controller.signal });
                 clearTimeout(timeoutId);
 
-                logMsg(`-> Wikidata HTTP Status: ${res.status}`, res.ok ? "info" : "error");
+                logMsg(`-> Wikidata Status HTTP: ${res.status}`, res.ok ? "info" : "error");
                 if (res.ok) {
                     const data = await res.json();
                     if (data.results && data.results.bindings && data.results.bindings.length > 0) {
                         processWikidataData(data.results.bindings);
                         logMsg(`=> WIKIDATA SUCCESSO! ${allDownloadedPeaks.length} cime caricate.`, "success");
-                        logMsg("Avvio Motore Grafico AR in 2 secondi...", "success");
-                        setTimeout(enterARMode, 2000);
+                        logMsg("Avvio fotocamera e interfaccia AR...", "success");
+                        setTimeout(enterARMode, 1500);
                         return;
                     } else {
-                        logMsg("-> Wikidata: Nessun risultato nel raggio.", "error");
+                        logMsg("-> Wikidata: Nessun elemento trovabile nel raggio.", "error");
                     }
                 }
             } catch (e) { logMsg(`-> Errore Wikidata: ${e.message}`, "error"); }
 
-            // SE TUTTO FALLISCE
-            logMsg("=== ERRORE CRITICO RETE ===", "error");
-            logMsg("Nessun dato scaricato. Controlla connessione o invia il LOG allo sviluppatore.", "error");
+            logMsg("=== IMPOSSIBILE SCARICARE I DATI ===", "error");
             document.getElementById('debug-error-actions').classList.remove('hidden');
             document.getElementById('btn-force-ar').classList.remove('hidden');
         }
 
-        // --- PROCESSING DATI ---
+        // --- ELABORAZIONE DATI UNIVERASALE ---
         function processOverpassData(elements) {
             allDownloadedPeaks = elements.map(el => {
                 if (!el || !el.tags) return null;
-                const name = el.tags.name || el.tags['name:it'] || el.tags.official_name;
+                const name = el.tags.name || el.tags['name:it'] || el.tags['name:en'] || el.tags.official_name;
                 if (!name) return null;
 
-                const ele = parseFloat(el.tags.ele) || 300;
+                const ele = parseFloat(el.tags.ele) || 500;
                 const distKm = calculateDistance(userLat, userLon, el.lat, el.lon);
                 const bearing = calculateBearing(userLat, userLon, el.lat, el.lon);
                 const eleDiffMeters = ele - userAlt;
                 const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
                 return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
             }).filter(p => p !== null);
+            
             document.getElementById('d-parsed').innerText = allDownloadedPeaks.length;
             applyOcclusionCulling(allDownloadedPeaks);
             updateBufferUIAndFilter();
@@ -342,7 +338,7 @@
                 const name = b.itemLabel ? b.itemLabel.value : "Cima";
                 const pLat = parseFloat(b.lat.value);
                 const pLon = parseFloat(b.lon.value);
-                const ele = b.ele ? parseFloat(b.ele.value) : 350;
+                const ele = b.ele ? parseFloat(b.ele.value) : 500;
 
                 const distKm = calculateDistance(userLat, userLon, pLat, pLon);
                 const bearing = calculateBearing(userLat, userLon, pLat, pLon);
@@ -350,6 +346,7 @@
                 const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
                 return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
             });
+            
             document.getElementById('d-parsed').innerText = allDownloadedPeaks.length;
             applyOcclusionCulling(allDownloadedPeaks);
             updateBufferUIAndFilter();
@@ -380,7 +377,7 @@
             document.getElementById('d-inband').innerText = activePeaks.length;
         }
 
-        // MATEMATICA E SENSORI
+        // --- MATEMATICA E SENSORI ---
         function calculateDistance(lat1, lon1, lat2, lon2) {
             const R = 6371; const dLat = (lat2 - lat1) * RAD; const dLon = (lon2 - lon1) * RAD;
             const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.sin(dLon/2) * Math.sin(dLon/2);
@@ -411,7 +408,7 @@
             }, true);
         }
 
-        // --- FASE 3: ACCENSIONE FOTOCAMERA E RENDER AR ---
+        // --- FASE 3: ATTIIVAZIONE FOTOCAMERA E RENDERING ---
         async function enterARMode() {
             document.getElementById('debug-screen').classList.add('hidden');
             document.getElementById('ar-view-layer').classList.remove('hidden');
@@ -426,11 +423,25 @@
                 try {
                     const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                     document.getElementById('camera-feed').srcObject = fallback;
-                } catch(e) { alert("Nessun accesso alla fotocamera."); }
+                } catch(e) { alert("Impossibile accedere alla fotocamera."); }
             }
 
             isARActive = true;
             requestAnimationFrame(renderLoop);
+        }
+
+        function setupSlider() {
+            const slider = document.getElementById('depth-slider');
+            slider.addEventListener('input', () => {
+                targetDistanceKm = parseInt(slider.value);
+                updateBufferUIAndFilter();
+            });
+        }
+
+        function resizeCanvas() {
+            const canvas = document.getElementById('ar-canvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
         }
 
         function getGravityAttitude(alpha, beta, gamma) {
