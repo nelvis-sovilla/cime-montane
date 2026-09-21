@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - v2.9.0 Fast Engine</title>
+    <title>PeakFinder AR - v3.0.0 Clean Init</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -13,7 +13,7 @@
 
         .hidden { display: none !important; }
 
-        /* FASE 1: CALIBRAZIONE TAP */
+        /* FASE 1: CALIBRAZIONE E AVVIO */
         .calib-container { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             display: flex; flex-direction: column; justify-content: space-between; 
@@ -87,8 +87,8 @@
     <div id="calib-screen" class="calib-container">
         <div class="calib-header">
             <h1>PEAKFINDER AR</h1>
-            <div class="version-tag">VERSIONE v2.9.0 (Fast Engine)</div>
-            <p style="margin-top: 14px;">1. Orienta il telefono verso il <b>NORD REALE</b>.<br>2. Tocca AVVIA per il download ad alta velocità.</p>
+            <div class="version-tag">VERSIONE v3.0.0 (Clean Init)</div>
+            <p style="margin-top: 14px;">1. Orienta il telefono verso il <b>NORD REALE</b>.<br>2. Tocca AVVIA per scaricare i dati territorio.</p>
         </div>
         <div class="calib-body">
             <div class="fixed-arrow-box"><div class="fixed-needle"></div></div>
@@ -98,7 +98,7 @@
 
     <!-- FASE 2: TERMINALE DI DEBUG -->
     <div id="debug-screen" class="debug-container hidden">
-        <div class="debug-header">Terminal Avvio Fast v2.9.0...</div>
+        <div class="debug-header">Terminal Avvio System v3.0.0...</div>
         <div id="debug-console"></div>
         <div class="debug-actions hidden" id="debug-error-actions">
             <button class="btn-debug" onclick="copyDebugLog()">Copia Log Errori</button>
@@ -148,6 +148,11 @@
 
         let fullDebugLogText = "";
 
+        window.addEventListener('DOMContentLoaded', () => {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+        });
+
         // --- TERMINALE DI LOGGING ---
         function logMsg(text, type="info") {
             const consoleDiv = document.getElementById('debug-console');
@@ -177,7 +182,7 @@
             document.getElementById('calib-screen').classList.add('hidden');
             document.getElementById('debug-screen').classList.remove('hidden');
             
-            logMsg("== BOOT v2.9.0 FAST PIPELINE ==", "success");
+            logMsg("== BOOT ENGINE v3.0.0 CLEAN INIT ==", "success");
             logMsg("Acquisizione coordinate GPS...", "info");
 
             initSensors();
@@ -225,7 +230,6 @@
         async function executeFastNetworkPipeline() {
             allDownloadedPeaks = [];
 
-            // Raggio BBox di 20 km per query veloci (<1.5s)
             const radiusKm = 20;
             const latDelta = radiusKm / 111.0;
             const lonDelta = radiusKm / (111.0 * Math.cos(userLat * RAD));
@@ -243,7 +247,7 @@
                 "https://lz4.overpass-api.de/api/interpreter"
             ];
 
-            // 1. TENTATIVI HTTP POST NATIVI (Timeout breve: 6s)
+            // 1. TENTATIVI HTTP POST NATIVI (Timeout: 6s)
             for (let i = 0; i < overpassServers.length; i++) {
                 const srvUrl = overpassServers[i];
                 const srvName = srvUrl.split('//')[1].split('/')[0];
@@ -286,7 +290,7 @@
                 }
             }
 
-            // 2. FALLBACK WIKIPEDIA GEOSEARCH (Latenza garantita < 500ms)
+            // 2. FALLBACK WIKIPEDIA GEOSEARCH
             logMsg("Fallback rapido su Wikipedia Geosearch API...", "warn");
             try {
                 const wikiGeoUrl = `https://it.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${userLat}%7C${userLon}&gsradius=10000&gslimit=100&format=json&origin=*`;
@@ -380,4 +384,202 @@
             document.getElementById('dist-max').innerText = `${maxDist}`;
 
             activePeaks = allDownloadedPeaks.filter(p => !p.isOccluded && p.dist >= minDist && p.dist <= maxDist);
-            document.getElementById('d-inband').innerText = activePeaks.length
+            document.getElementById('d-inband').innerText = activePeaks.length;
+        }
+
+        // --- MATEMATICA E SENSORI ---
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; const dLat = (lat2 - lat1) * RAD; const dLon = (lon2 - lon1) * RAD;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            const dLon = (lon2 - lon1) * RAD;
+            const y = Math.sin(dLon) * Math.cos(lat2 * RAD);
+            const x = Math.cos(lat1 * RAD) * Math.sin(lat2 * RAD) - Math.sin(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.cos(dLon);
+            return (Math.atan2(y, x) * DEG + 360) % 360;
+        }
+
+        function shortestAngleDiff(target, current) {
+            let diff = (target - current) % 360;
+            if (diff > 180) diff -= 360;
+            if (diff < -180) diff += 360;
+            return diff;
+        }
+
+        function initSensors() {
+            window.addEventListener('deviceorientationabsolute', (e) => {
+                if (e.alpha !== null) { absoluteCompassEnabled = true; rawAlpha = e.alpha || 0; rawBeta = e.beta || 0; rawGamma = e.gamma || 0; }
+            }, true);
+            window.addEventListener('deviceorientation', (e) => {
+                if (e.webkitCompassHeading !== undefined) { absoluteCompassEnabled = true; rawAlpha = 360 - e.webkitCompassHeading; rawBeta = e.beta || 0; rawGamma = e.gamma || 0; } 
+                else if (!absoluteCompassEnabled && e.alpha !== null) { rawAlpha = e.alpha || 0; rawBeta = e.beta || 0; rawGamma = e.gamma || 0; }
+            }, true);
+        }
+
+        // --- FASE 3: ACCENSIONE FOTOCAMERA E RENDERING AR ---
+        async function enterARMode() {
+            document.getElementById('debug-screen').classList.add('hidden');
+            document.getElementById('ar-view-layer').classList.remove('hidden');
+            setupSlider();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+                document.getElementById('camera-feed').srcObject = stream;
+            } catch (err) {
+                try {
+                    const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    document.getElementById('camera-feed').srcObject = fallback;
+                } catch(e) { alert("Impossibile accedere alla fotocamera."); }
+            }
+
+            isARActive = true;
+            requestAnimationFrame(renderLoop);
+        }
+
+        function setupSlider() {
+            const slider = document.getElementById('depth-slider');
+            slider.addEventListener('input', () => {
+                targetDistanceKm = parseInt(slider.value);
+                updateBufferUIAndFilter();
+            });
+        }
+
+        function resizeCanvas() {
+            const canvas = document.getElementById('ar-canvas');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function getGravityAttitude(alpha, beta, gamma) {
+            const a = alpha * RAD, b = beta * RAD, g = gamma * RAD;
+            const cA = Math.cos(a), sA = Math.sin(a), cB = Math.cos(b), sB = Math.sin(b), cG = Math.cos(g), sG = Math.sin(g);
+            const Gx = sG * cB, Gy = -sB, Gz = -cG * cB;
+            const camUp = -Gz; 
+            let pitch = Math.asin(Math.max(-1, Math.min(1, camUp))) * DEG;
+            if (isNaN(pitch)) pitch = 0;
+            const isLandscape = window.innerWidth > window.innerHeight;
+            let roll = 0;
+            if (!isLandscape) { roll = Math.atan2(Gx, -Gy) * DEG; } 
+            else {
+                const scrAngle = (screen.orientation && screen.orientation.angle !== undefined) ? screen.orientation.angle : (window.orientation || 0);
+                roll = (scrAngle === 90) ? Math.atan2(-Gy, Gx) * DEG : Math.atan2(Gy, -Gx) * DEG;
+            }
+            if (isNaN(roll)) roll = 0;
+            const camE = -(cA * sG + sA * sB * cG), camN = -(sA * sG - cA * sB * cG);
+            let heading = Math.atan2(camE, camN) * DEG;
+            if (isNaN(heading)) heading = 0;
+            if (heading < 0) heading += 360;
+            return { heading, pitch, roll };
+        }
+
+        function renderLoop() {
+            if (isARActive) {
+                try {
+                    const attitude = getGravityAttitude(rawAlpha, rawBeta, rawGamma);
+                    currentHeading = attitude.heading;
+                    renderARHUD(attitude);
+                } catch (err) { }
+            }
+            requestAnimationFrame(renderLoop);
+        }
+
+        function renderARHUD(attitude) {
+            const canvas = document.getElementById('ar-canvas');
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2, isLandscape = w > h;
+
+            if (Math.abs(attitude.pitch) > 65) {
+                ctx.fillStyle = "rgba(15, 23, 42, 0.85)"; ctx.strokeStyle = "#06b6d4"; ctx.lineWidth = 2;
+                ctx.fillRect(cx - 140, cy - 30, 280, 60); ctx.strokeRect(cx - 140, cy - 30, 280, 60);
+                ctx.fillStyle = "#ffffff"; ctx.font = "bold 13px system-ui"; ctx.textAlign = "center";
+                ctx.fillText("INCLINA IL TELEFONO", cx, cy - 6);
+                ctx.fillStyle = "#06b6d4"; ctx.font = "11px system-ui"; ctx.fillText("Punta verso l'orizzonte", cx, cy + 14);
+                return;
+            }
+
+            sHeading = (sHeading + shortestAngleDiff(currentHeading, sHeading) * 0.06 + 360) % 360;
+            sPitch = sPitch + (attitude.pitch - sPitch) * 0.10;
+            sRoll = sRoll + shortestAngleDiff(attitude.roll, sRoll) * 0.10;
+
+            const fovV = isLandscape ? 45 : 65, fovH = isLandscape ? 70 : 50;
+            const pxPerDegreeV = h / fovV, pxPerDegreeH = w / fovH;
+            const horizonY = -sPitch * pxPerDegreeV;
+            const finalHeading = (sHeading - calibratedOffset + 360) % 360;
+
+            ctx.save(); ctx.translate(cx, cy); ctx.rotate(-sRoll * RAD);
+
+            ctx.strokeStyle = "#06b6d4"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-w, horizonY); ctx.lineTo(w, horizonY); ctx.stroke();
+
+            const cardinals = [{ name: "N (0°)", deg: 0 }, { name: "E (90°)", deg: 90 }, { name: "S (180°)", deg: 180 }, { name: "W (270°)", deg: 270 }];
+            cardinals.forEach(pt => {
+                let diff = pt.deg - finalHeading;
+                if (diff > 180) diff -= 360; if (diff < -180) diff += 360;
+                if (Math.abs(diff) <= fovH / 2) {
+                    let posX = diff * pxPerDegreeH;
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.4)"; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+                    ctx.beginPath(); ctx.moveTo(posX, horizonY - h); ctx.lineTo(posX, horizonY + h); ctx.stroke(); ctx.setLineDash([]);
+                    ctx.fillStyle = "#0f172a"; ctx.fillRect(posX - 35, horizonY - 14, 70, 28);
+                    ctx.strokeStyle = "#06b6d4"; ctx.lineWidth = 1.5; ctx.strokeRect(posX - 35, horizonY - 14, 70, 28);
+                    ctx.fillStyle = "#ffffff"; ctx.font = "bold 12px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+                    ctx.fillText(pt.name, posX, horizonY);
+                }
+            });
+
+            let visiblePeaks = activePeaks.filter(peak => {
+                let diffH = peak.bearing - finalHeading;
+                if (diffH > 180) diffH -= 360; if (diffH < -180) diffH += 360;
+                return Math.abs(diffH) <= fovH / 2;
+            });
+
+            currentInViewCount = visiblePeaks.length;
+            visiblePeaks.sort((a, b) => b.ele - a.ele);
+
+            let placedBoxes = [];
+            visiblePeaks.forEach(peak => {
+                let diffH = peak.bearing - finalHeading;
+                if (diffH > 180) diffH -= 360; if (diffH < -180) diffH += 360;
+                let targetX = diffH * pxPerDegreeH, targetY = horizonY - (peak.elevationAngle * pxPerDegreeV);
+
+                if (peak.smoothX === null || isNaN(peak.smoothX)) { peak.smoothX = targetX; peak.smoothY = targetY; } 
+                else { peak.smoothX += (targetX - peak.smoothX) * 0.15; peak.smoothY += (targetY - peak.smoothY) * 0.15; }
+
+                const stemLength = 15 + Math.min(40, (peak.ele / 3500) * 40);
+                const boxW = 120, boxH = 32, boxX = peak.smoothX - boxW / 2, boxY = peak.smoothY - stemLength - boxH;
+                const currentBox = { x1: boxX, y1: boxY, x2: boxX + boxW, y2: boxY + boxH };
+
+                let isColliding = placedBoxes.some(b => !(currentBox.x2 < b.x1 || currentBox.x1 > b.x2 || currentBox.y2 < b.y1 || currentBox.y1 > b.y2));
+
+                if (!isColliding) {
+                    placedBoxes.push(currentBox);
+                    ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(peak.smoothX, peak.smoothY, 5, 0, Math.PI * 2); ctx.fill();
+                    ctx.strokeStyle = "rgba(239, 68, 68, 0.7)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(peak.smoothX, peak.smoothY); ctx.lineTo(peak.smoothX, boxY + boxH); ctx.stroke();
+                    ctx.fillStyle = "rgba(15, 23, 42, 0.95)"; ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 1.5;
+                    ctx.fillRect(boxX, boxY, boxW, boxH); ctx.strokeRect(boxX, boxY, boxW, boxH);
+                    ctx.fillStyle = "#ffffff"; ctx.font = "bold 11px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+                    ctx.fillText(peak.name, peak.smoothX, boxY + 14);
+                    ctx.fillStyle = "#06b6d4"; ctx.font = "10px monospace"; ctx.fillText(`${peak.ele.toFixed(0)}m | ${peak.dist.toFixed(1)}km`, peak.smoothX, boxY + 26);
+                } else {
+                    ctx.fillStyle = "rgba(239, 68, 68, 0.4)"; ctx.beginPath(); ctx.arc(peak.smoothX, peak.smoothY, 3, 0, Math.PI * 2); ctx.fill();
+                }
+            });
+
+            const now = Date.now();
+            if (now - lastDiagTime > 500) {
+                lastDiagTime = now;
+                document.getElementById('d-inview').innerText = currentInViewCount;
+            }
+
+            ctx.restore();
+            ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+            ctx.moveTo(cx - 20, cy); ctx.lineTo(cx + 20, cy); ctx.moveTo(cx, cy - 20); ctx.lineTo(cx, cy + 20); ctx.stroke();
+        }
+    </script>
+</body>
+</html>
