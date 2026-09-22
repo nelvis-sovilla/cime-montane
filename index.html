@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>PeakFinder AR - v3.0.0 Clean Init</title>
+    <title>PeakFinder AR - v3.1.0 Pure Peaks Engine</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, monospace; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; color: #06b6d4; }
@@ -87,8 +87,8 @@
     <div id="calib-screen" class="calib-container">
         <div class="calib-header">
             <h1>PEAKFINDER AR</h1>
-            <div class="version-tag">VERSIONE v3.0.0 (Clean Init)</div>
-            <p style="margin-top: 14px;">1. Orienta il telefono verso il <b>NORD REALE</b>.<br>2. Tocca AVVIA per scaricare i dati territorio.</p>
+            <div class="version-tag">VERSIONE v3.1.0 (Pure Peaks Engine)</div>
+            <p style="margin-top: 14px;">1. Orienta il telefono verso il <b>NORD REALE</b>.<br>2. Tocca AVVIA per scaricare solo cime e colli reali.</p>
         </div>
         <div class="calib-body">
             <div class="fixed-arrow-box"><div class="fixed-needle"></div></div>
@@ -98,7 +98,7 @@
 
     <!-- FASE 2: TERMINALE DI DEBUG -->
     <div id="debug-screen" class="debug-container hidden">
-        <div class="debug-header">Terminal Avvio System v3.0.0...</div>
+        <div class="debug-header">Terminal Boot v3.1.0...</div>
         <div id="debug-console"></div>
         <div class="debug-actions hidden" id="debug-error-actions">
             <button class="btn-debug" onclick="copyDebugLog()">Copia Log Errori</button>
@@ -182,7 +182,7 @@
             document.getElementById('calib-screen').classList.add('hidden');
             document.getElementById('debug-screen').classList.remove('hidden');
             
-            logMsg("== BOOT ENGINE v3.0.0 CLEAN INIT ==", "success");
+            logMsg("== BOOT ENGINE v3.1.0 PURE PEAKS ==", "success");
             logMsg("Acquisizione coordinate GPS...", "info");
 
             initSensors();
@@ -205,7 +205,7 @@
                             }
                         } catch (e) { logMsg("Reverse geocoding non disponibile.", "warn"); }
 
-                        executeFastNetworkPipeline();
+                        executePurePeakPipeline();
                     },
                     err => {
                         logMsg(`ERRORE GPS: ${err.message}`, "error");
@@ -223,14 +223,15 @@
             document.getElementById('debug-error-actions').classList.add('hidden');
             document.getElementById('btn-force-ar').classList.add('hidden');
             logMsg("--- RITENTATIVO MANUALE RETE ---", "warn");
-            executeFastNetworkPipeline();
+            executePurePeakPipeline();
         }
 
-        // --- PIPELINE RETE OTTIMIZZATA AD ALTA VELOCITÀ ---
-        async function executeFastNetworkPipeline() {
+        // --- PIPELINE RETE RIGOROSA (ESCLUSIVAMENTE MONTAGNE / COLLI / CIME) ---
+        async function executePurePeakPipeline() {
             allDownloadedPeaks = [];
 
-            const radiusKm = 20;
+            // 1. OVERPASS API (BBox 15 km - natural=peak)
+            const radiusKm = 15;
             const latDelta = radiusKm / 111.0;
             const lonDelta = radiusKm / (111.0 * Math.cos(userLat * RAD));
 
@@ -239,23 +240,22 @@
             const minLon = (userLon - lonDelta).toFixed(4);
             const maxLon = (userLon + lonDelta).toFixed(4);
 
-            const ql = `[out:json][timeout:8];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt 250;`;
+            const ql = `[out:json][timeout:6];node["natural"="peak"](${minLat},${minLon},${maxLat},${maxLon});out body qt 200;`;
 
             const overpassServers = [
                 "https://overpass-api.de/api/interpreter",
                 "https://overpass.kumi.systems/api/interpreter",
-                "https://lz4.overpass-api.de/api/interpreter"
+                "https://overpass.private.coffee/api/interpreter"
             ];
 
-            // 1. TENTATIVI HTTP POST NATIVI (Timeout: 6s)
             for (let i = 0; i < overpassServers.length; i++) {
                 const srvUrl = overpassServers[i];
                 const srvName = srvUrl.split('//')[1].split('/')[0];
-                logMsg(`Chiamata POST -> ${srvName} (BBox 20km)...`, "warn");
+                logMsg(`Chiamata Overpass -> ${srvName}...`, "warn");
 
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => { controller.abort(); logMsg("-> Timeout server superato (6s)", "error"); }, 6000);
+                    const timeoutId = setTimeout(() => { controller.abort(); logMsg("-> Timeout server (6s)", "error"); }, 6000);
 
                     const start = Date.now();
                     const params = new URLSearchParams();
@@ -275,60 +275,76 @@
                     if (res.ok) {
                         const data = await res.json();
                         if (data.elements && data.elements.length > 0) {
-                            logMsg(`-> Nodi geografici trovati: ${data.elements.length}`, "info");
+                            logMsg(`-> Cime ufficiali OSM trovate: ${data.elements.length}`, "info");
                             processOverpassData(data.elements);
-                            logMsg(`=> SUCCESSO! ${allDownloadedPeaks.length} cime caricate in memoria.`, "success");
+                            logMsg(`=> SUCCESSO! ${allDownloadedPeaks.length} cime caricate.`, "success");
                             logMsg("Avvio AR in 1,5 secondi...", "success");
                             setTimeout(enterARMode, 1500);
                             return;
                         } else {
-                            logMsg("-> Risposta vuota, passo al server successivo.", "warn");
+                            logMsg("-> Nessuna cima 'natural=peak' in questo settore OSM.", "warn");
                         }
                     }
                 } catch (e) {
-                    logMsg(`-> Eccezione POST: ${e.message}`, "error");
+                    logMsg(`-> Eccezione Overpass: ${e.message}`, "error");
                 }
             }
 
-            // 2. FALLBACK WIKIPEDIA GEOSEARCH
-            logMsg("Fallback rapido su Wikipedia Geosearch API...", "warn");
+            // 2. FALLBACK WIKIDATA SPARQL OTTIMIZZATO (SOLO ENTITÀ Q8502=Montagna, Q54050=Collina, Q207326=Cima)
+            logMsg("Chiamata Wikidata SPARQL (Filtro rigoroso cime e colli)...", "warn");
+            const sparql = `SELECT ?item ?itemLabel ?lat ?lon ?ele WHERE {
+              SERVICE wikibase:around {
+                ?item wdt:P625 ?location .
+                bd:serviceParam wikibase:center "Point(${userLon} ${userLat})"^^geo:wktLiteral .
+                bd:serviceParam wikibase:radius "20" .
+              }
+              ?item wdt:P31 ?type .
+              VALUES ?type { wd:Q8502 wd:Q54050 wd:Q207326 wd:Q194121 wd:Q1404494 }
+              ?item p:P625/psv:P625 ?locNode .
+              ?locNode wikibase:geoLatitude ?lat ; wikibase:geoLongitude ?lon .
+              OPTIONAL { ?item wdt:P2044 ?ele . }
+              SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". }
+            } LIMIT 100`;
+
             try {
-                const wikiGeoUrl = `https://it.wikipedia.org/w/api.php?action=query&list=geosearch&gscoord=${userLat}%7C${userLon}&gsradius=10000&gslimit=100&format=json&origin=*`;
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const timeoutId = setTimeout(() => controller.abort(), 6000);
 
                 const start = Date.now();
-                const res = await fetch(wikiGeoUrl, { signal: controller.signal });
+                const wikiUrl = `https://query.wikidata.org/sparql?query=${encodeURIComponent(sparql)}&format=json`;
+                const res = await fetch(wikiUrl, { headers: { 'Accept': 'application/sparql-results+json' }, signal: controller.signal });
                 const ping = Date.now() - start;
                 clearTimeout(timeoutId);
 
-                logMsg(`-> Wikipedia Risposta in ${ping}ms. HTTP Code: ${res.status}`, res.ok ? "info" : "error");
+                logMsg(`-> Wikidata Risposta in ${ping}ms. HTTP Code: ${res.status}`, res.ok ? "info" : "error");
 
                 if (res.ok) {
                     const data = await res.json();
-                    if (data && data.query && data.query.geosearch && data.query.geosearch.length > 0) {
-                        processWikipediaData(data.query.geosearch);
-                        logMsg(`=> WIKIPEDIA SUCCESSO! ${allDownloadedPeaks.length} cime caricate.`, "success");
+                    if (data && data.results && data.results.bindings && data.results.bindings.length > 0) {
+                        processWikidataData(data.results.bindings);
+                        logMsg(`=> WIKIDATA SUCCESSO! ${allDownloadedPeaks.length} cime/colli caricati.`, "success");
                         logMsg("Avvio AR in 1,5 secondi...", "success");
                         setTimeout(enterARMode, 1500);
                         return;
+                    } else {
+                        logMsg("-> Wikidata: Nessun colle o montagna registrato nelle vicinanze.", "warn");
                     }
                 }
-            } catch (e) { logMsg(`-> Errore Wikipedia: ${e.message}`, "error"); }
+            } catch (e) { logMsg(`-> Errore Wikidata: ${e.message}`, "error"); }
 
-            logMsg("=== IMPOSSIBILE SCARICARE I DATI ===", "error");
+            logMsg("=== IMPOSSIBILE RISALIRE A CIME O COLLI ===", "error");
             document.getElementById('debug-error-actions').classList.remove('hidden');
             document.getElementById('btn-force-ar').classList.remove('hidden');
         }
 
-        // --- PROCESSING DATI UNIVERASALE ---
+        // --- PROCESSING DATI ---
         function processOverpassData(elements) {
             allDownloadedPeaks = elements.map(el => {
                 if (!el || !el.tags) return null;
                 const name = el.tags.name || el.tags['name:it'] || el.tags['name:en'] || el.tags.official_name;
                 if (!name) return null;
 
-                const ele = parseFloat(el.tags.ele) || 400;
+                const ele = parseFloat(el.tags.ele) || 300;
                 const distKm = calculateDistance(userLat, userLon, el.lat, el.lon);
                 const bearing = calculateBearing(userLat, userLon, el.lat, el.lon);
                 const eleDiffMeters = ele - userAlt;
@@ -341,19 +357,17 @@
             updateBufferUIAndFilter();
         }
 
-        function processWikipediaData(items) {
-            allDownloadedPeaks = items.map(item => {
-                const name = item.title;
-                const distKm = item.dist / 1000;
-                
-                let ele = userAlt + 300; 
-                const eleMatch = name.match(/(\d{3,4})\s*m/i);
-                if (eleMatch) ele = parseFloat(eleMatch[1]);
+        function processWikidataData(bindings) {
+            allDownloadedPeaks = bindings.map(b => {
+                const name = b.itemLabel ? b.itemLabel.value : "Cima";
+                const pLat = parseFloat(b.lat.value);
+                const pLon = parseFloat(b.lon.value);
+                const ele = b.ele ? parseFloat(b.ele.value) : 300;
 
-                const bearing = calculateBearing(userLat, userLon, item.lat, item.lon);
+                const distKm = calculateDistance(userLat, userLon, pLat, pLon);
+                const bearing = calculateBearing(userLat, userLon, pLat, pLon);
                 const eleDiffMeters = ele - userAlt;
                 const elevationAngle = Math.atan2(eleDiffMeters, distKm * 1000) * DEG;
-
                 return { name, ele, dist: distKm, bearing, elevationAngle, smoothX: null, smoothY: null };
             });
 
